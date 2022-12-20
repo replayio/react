@@ -9,7 +9,6 @@
 
 import EventEmitter from '../events';
 import {__DEBUG__} from '../constants';
-import setupHighlighter from './views/Highlighter';
 import {
   initialize as setupTraceUpdates,
   toggleEnabled as setTraceUpdatesEnabled,
@@ -211,7 +210,6 @@ export default class Agent extends EventEmitter<{
     bridge.send('isBackendStorageAPISupported', isBackendStorageAPISupported);
     bridge.send('isSynchronousXHRSupported', isSynchronousXHRSupported());
 
-    setupHighlighter(bridge, this);
     setupTraceUpdates(this);
 
     window.__RECORD_REPLAY_REACT_DEVTOOLS_SEND_MESSAGE__ = (
