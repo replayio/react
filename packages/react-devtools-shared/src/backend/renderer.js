@@ -38,7 +38,6 @@ import {
   setInObject,
   utfEncodeString,
 } from 'react-devtools-shared/src/utils';
-import {sessionStorageGetItem} from 'react-devtools-shared/src/storage';
 import {
   cleanForBridge,
   copyToClipboard,
@@ -1094,6 +1093,25 @@ export function attach(
   // When a mount or update is in progress, this value tracks the root that is being operated on.
   let currentRootID: number = -1;
 
+  function getReplayPersistentID(obj: Fiber) {
+    const id = __RECORD_REPLAY_ARGUMENTS__.getPersistentId(obj);
+    if (!id) {
+      throw new Error(
+        `Missing persistent ID for fiber ${obj} ${obj.constructor}`,
+      );
+    }
+    return id;
+  }
+
+  function getReplayFiberID(fiber: Fiber) {
+    const id = getReplayPersistentID(fiber);
+    if (!fiber.alternate) {
+      return id;
+    }
+    const alternateId = getReplayPersistentID(fiber.alternate);
+    return Math.min(id, alternateId);
+  }
+
   // Returns the unique ID for a Fiber or generates and caches a new one if the Fiber hasn't been seen before.
   // Once this method has been called for a Fiber, untrackFiberID() should always be called later to avoid leaking.
   function getOrGenerateFiberID(fiber: Fiber): number {
@@ -1110,7 +1128,7 @@ export function attach(
     let didGenerateID = false;
     if (id === null) {
       didGenerateID = true;
-      id = getUID();
+      id = getReplayFiberID(fiber);
     }
 
     // This refinement is for Flow purposes only.
@@ -2012,7 +2030,8 @@ export function attach(
       }
     }
 
-    const unsafeID = getFiberIDUnsafe(fiber);
+    const persistentID = getReplayFiberID(fiber);
+    const unsafeID = persistentID;
     if (unsafeID === null) {
       // If we've never seen this Fiber, it might be inside of a legacy render Suspense fragment (so the store is not even aware of it).
       // In that case we can just ignore it or it will cause errors later on.
@@ -4129,16 +4148,6 @@ export function attach(
     }
   }
 
-  // Automatically start profiling so that we don't miss timing info from initial "mount".
-  if (
-    sessionStorageGetItem(SESSION_STORAGE_RELOAD_AND_PROFILE_KEY) === 'true'
-  ) {
-    startProfiling(
-      sessionStorageGetItem(SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY) ===
-        'true',
-    );
-  }
-
   // React will switch between these implementations depending on whether
   // we have any manually suspended/errored-out Fibers or not.
   function shouldErrorFiberAlwaysNull() {
@@ -4493,6 +4502,7 @@ export function attach(
     deletePath,
     findNativeNodesForFiberID,
     flushInitialOperations,
+    flushPendingEvents,
     getBestMatchForTrackedPath,
     getDisplayNameForFiberID,
     getFiberForNative,

@@ -49,7 +49,6 @@ import {
   ElementTypeFunction,
   ElementTypeMemo,
 } from 'react-devtools-shared/src/types';
-import {localStorageGetItem, localStorageSetItem} from './storage';
 import {meta} from './hydration';
 import isArray from './isArray';
 
@@ -325,25 +324,12 @@ export function getDefaultComponentFilters(): Array<ComponentFilter> {
 }
 
 export function getSavedComponentFilters(): Array<ComponentFilter> {
-  try {
-    const raw = localStorageGetItem(
-      LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
-    );
-    if (raw != null) {
-      return JSON.parse(raw);
-    }
-  } catch (error) {}
   return getDefaultComponentFilters();
 }
 
 export function setSavedComponentFilters(
   componentFilters: Array<ComponentFilter>,
-): void {
-  localStorageSetItem(
-    LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
-    JSON.stringify(componentFilters),
-  );
-}
+): void {}
 
 function parseBool(s: ?string): ?boolean {
   if (s === 'true') {
@@ -367,29 +353,19 @@ export function castBrowserTheme(v: any): ?BrowserTheme {
 }
 
 export function getAppendComponentStack(): boolean {
-  const raw = localStorageGetItem(
-    LOCAL_STORAGE_SHOULD_APPEND_COMPONENT_STACK_KEY,
-  );
-  return parseBool(raw) ?? true;
+  return true;
 }
 
 export function getBreakOnConsoleErrors(): boolean {
-  const raw = localStorageGetItem(LOCAL_STORAGE_SHOULD_BREAK_ON_CONSOLE_ERRORS);
-  return parseBool(raw) ?? false;
+  return false;
 }
 
 export function getHideConsoleLogsInStrictMode(): boolean {
-  const raw = localStorageGetItem(
-    LOCAL_STORAGE_HIDE_CONSOLE_LOGS_IN_STRICT_MODE,
-  );
-  return parseBool(raw) ?? false;
+  return false;
 }
 
 export function getShowInlineWarningsAndErrors(): boolean {
-  const raw = localStorageGetItem(
-    LOCAL_STORAGE_SHOW_INLINE_WARNINGS_AND_ERRORS_KEY,
-  );
-  return parseBool(raw) ?? true;
+  return true;
 }
 
 export function getDefaultOpenInEditorURL(): string {
@@ -399,12 +375,6 @@ export function getDefaultOpenInEditorURL(): string {
 }
 
 export function getOpenInEditorURL(): string {
-  try {
-    const raw = localStorageGetItem(LOCAL_STORAGE_OPEN_IN_EDITOR_URL);
-    if (raw != null) {
-      return JSON.parse(raw);
-    }
-  } catch (error) {}
   return getDefaultOpenInEditorURL();
 }
 

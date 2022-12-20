@@ -8,18 +8,7 @@
  */
 
 import EventEmitter from '../events';
-import throttle from 'lodash.throttle';
-import {
-  SESSION_STORAGE_LAST_SELECTION_KEY,
-  SESSION_STORAGE_RELOAD_AND_PROFILE_KEY,
-  SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
-  __DEBUG__,
-} from '../constants';
-import {
-  sessionStorageGetItem,
-  sessionStorageRemoveItem,
-  sessionStorageSetItem,
-} from 'react-devtools-shared/src/storage';
+import {__DEBUG__} from '../constants';
 import setupHighlighter from './views/Highlighter';
 import {
   initialize as setupTraceUpdates,
@@ -160,26 +149,6 @@ export default class Agent extends EventEmitter<{
   constructor(bridge: BackendBridge) {
     super();
 
-    if (
-      sessionStorageGetItem(SESSION_STORAGE_RELOAD_AND_PROFILE_KEY) === 'true'
-    ) {
-      this._recordChangeDescriptions =
-        sessionStorageGetItem(
-          SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
-        ) === 'true';
-      this._isProfiling = true;
-
-      sessionStorageRemoveItem(SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY);
-      sessionStorageRemoveItem(SESSION_STORAGE_RELOAD_AND_PROFILE_KEY);
-    }
-
-    const persistedSelectionString = sessionStorageGetItem(
-      SESSION_STORAGE_LAST_SELECTION_KEY,
-    );
-    if (persistedSelectionString != null) {
-      this._persistedSelection = JSON.parse(persistedSelectionString);
-    }
-
     this._bridge = bridge;
 
     bridge.addListener('clearErrorsAndWarnings', this.clearErrorsAndWarnings);
@@ -197,7 +166,6 @@ export default class Agent extends EventEmitter<{
     bridge.addListener('overrideError', this.overrideError);
     bridge.addListener('overrideSuspense', this.overrideSuspense);
     bridge.addListener('overrideValueAtPath', this.overrideValueAtPath);
-    bridge.addListener('reloadAndProfile', this.reloadAndProfile);
     bridge.addListener('renamePath', this.renamePath);
     bridge.addListener('setTraceUpdatesEnabled', this.setTraceUpdatesEnabled);
     bridge.addListener('startProfiling', this.startProfiling);
@@ -239,15 +207,32 @@ export default class Agent extends EventEmitter<{
     // Notify the frontend if the backend supports the Storage API (e.g. localStorage).
     // If not, features like reload-and-profile will not work correctly and must be disabled.
     let isBackendStorageAPISupported = false;
-    try {
-      localStorage.getItem('test');
-      isBackendStorageAPISupported = true;
-    } catch (error) {}
+
     bridge.send('isBackendStorageAPISupported', isBackendStorageAPISupported);
     bridge.send('isSynchronousXHRSupported', isSynchronousXHRSupported());
 
     setupHighlighter(bridge, this);
     setupTraceUpdates(this);
+
+    window.__RECORD_REPLAY_REACT_DEVTOOLS_SEND_MESSAGE__ = (
+      inEvent,
+      inData,
+    ) => {
+      let rv;
+      this._bridge = {
+        send(event, data) {
+          rv = {event, data};
+        },
+      };
+      try {
+        this[inEvent](inData);
+      } catch (err) {
+        window.logMessage(
+          `Error executing bridge message '${inEvent}': ${err}, ${err.stack}`,
+        );
+      }
+      return rv;
+    };
   }
 
   get rendererInterfaces(): {[key: RendererID]: RendererInterface, ...} {
@@ -418,7 +403,6 @@ export default class Agent extends EventEmitter<{
         this._persistedSelection = null;
         this._persistedSelectionMatch = null;
         renderer.setTrackedPath(null);
-        this._throttledPersistSelection(rendererID, id);
       }
 
       // TODO: If there was a way to change the selected DOM element
@@ -567,21 +551,6 @@ export default class Agent extends EventEmitter<{
         value,
       });
     }
-  };
-
-  reloadAndProfile: (
-    recordChangeDescriptions: boolean,
-  ) => void = recordChangeDescriptions => {
-    sessionStorageSetItem(SESSION_STORAGE_RELOAD_AND_PROFILE_KEY, 'true');
-    sessionStorageSetItem(
-      SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
-      recordChangeDescriptions ? 'true' : 'false',
-    );
-
-    // This code path should only be hit if the shell has explicitly told the Store that it supports profiling.
-    // In that case, the shell must also listen for this specific message to know when it needs to reload the app.
-    // The agent can't do this in a way that is renderer agnostic.
-    this._bridge.send('reloadAppForProfiling');
   };
 
   renamePath: RenamePathParams => void = ({
@@ -831,23 +800,4 @@ export default class Agent extends EventEmitter<{
   onUnsupportedRenderer(rendererID: number) {
     this._bridge.send('unsupportedRendererVersion', rendererID);
   }
-
-  _throttledPersistSelection: any = throttle(
-    (rendererID: number, id: number) => {
-      // This is throttled, so both renderer and selected ID
-      // might not be available by the time we read them.
-      // This is why we need the defensive checks here.
-      const renderer = this._rendererInterfaces[rendererID];
-      const path = renderer != null ? renderer.getPathForElement(id) : null;
-      if (path !== null) {
-        sessionStorageSetItem(
-          SESSION_STORAGE_LAST_SELECTION_KEY,
-          JSON.stringify(({rendererID, path}: PersistedSelection)),
-        );
-      } else {
-        sessionStorageRemoveItem(SESSION_STORAGE_LAST_SELECTION_KEY);
-      }
-    },
-    1000,
-  );
 }

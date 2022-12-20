@@ -1112,6 +1112,7 @@ export function attach(
     copyElementPath,
     deletePath,
     flushInitialOperations,
+    flushPendingEvents,
     getBestMatchForTrackedPath,
     getDisplayNameForFiberID,
     getFiberForNative,

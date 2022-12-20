@@ -28,7 +28,6 @@ import {
   shallowDiffers,
   utfDecodeString,
 } from '../utils';
-import {localStorageGetItem, localStorageSetItem} from '../storage';
 import {__DEBUG__} from '../constants';
 import {printStore} from './utils';
 import ProfilerStore from './ProfilerStore';
@@ -196,13 +195,9 @@ export default class Store extends EventEmitter<{
       debug('constructor', 'subscribing to Bridge');
     }
 
-    this._collapseNodesByDefault =
-      localStorageGetItem(LOCAL_STORAGE_COLLAPSE_ROOTS_BY_DEFAULT_KEY) ===
-      'true';
+    this._collapseNodesByDefault = false;
 
-    this._recordChangeDescriptions =
-      localStorageGetItem(LOCAL_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY) ===
-      'true';
+    this._recordChangeDescriptions = false;
 
     this._componentFilters = getSavedComponentFilters();
 
@@ -321,11 +316,6 @@ export default class Store extends EventEmitter<{
   set collapseNodesByDefault(value: boolean): void {
     this._collapseNodesByDefault = value;
 
-    localStorageSetItem(
-      LOCAL_STORAGE_COLLAPSE_ROOTS_BY_DEFAULT_KEY,
-      value ? 'true' : 'false',
-    );
-
     this.emit('collapseNodesByDefault');
   }
 
@@ -406,11 +396,6 @@ export default class Store extends EventEmitter<{
   }
   set recordChangeDescriptions(value: boolean): void {
     this._recordChangeDescriptions = value;
-
-    localStorageSetItem(
-      LOCAL_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
-      value ? 'true' : 'false',
-    );
 
     this.emit('recordChangeDescriptions');
   }
