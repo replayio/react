@@ -40,7 +40,7 @@ class ClientReferenceDependency extends ModuleDependency {
 // without the client runtime so it's the first time in the loading sequence
 // you might want them.
 const clientImportName = 'react-server-dom-webpack/client';
-const clientFileName = require.resolve('../client');
+const clientFileName = require.resolve('../client.browser.js');
 
 type ClientReferenceSearchPath = {
   directory: string,
@@ -55,7 +55,8 @@ type Options = {
   isServer: boolean,
   clientReferences?: ClientReferencePath | $ReadOnlyArray<ClientReferencePath>,
   chunkName?: string,
-  manifestFilename?: string,
+  clientManifestFilename?: string,
+  ssrManifestFilename?: string,
 };
 
 const PLUGIN_NAME = 'React Server Plugin';
@@ -63,7 +64,8 @@ const PLUGIN_NAME = 'React Server Plugin';
 export default class ReactFlightWebpackPlugin {
   clientReferences: $ReadOnlyArray<ClientReferencePath>;
   chunkName: string;
-  manifestFilename: string;
+  clientManifestFilename: string;
+  ssrManifestFilename: string;
 
   constructor(options: Options) {
     if (!options || typeof options.isServer !== 'boolean') {
@@ -79,7 +81,7 @@ export default class ReactFlightWebpackPlugin {
         {
           directory: '.',
           recursive: true,
-          include: /\.client\.(js|ts|jsx|tsx)$/,
+          include: /\.(js|ts|jsx|tsx)$/,
         },
       ];
     } else if (
@@ -99,8 +101,10 @@ export default class ReactFlightWebpackPlugin {
     } else {
       this.chunkName = 'client[index]';
     }
-    this.manifestFilename =
-      options.manifestFilename || 'react-client-manifest.json';
+    this.clientManifestFilename =
+      options.clientManifestFilename || 'react-client-manifest.json';
+    this.ssrManifestFilename =
+      options.ssrManifestFilename || 'react-ssr-manifest.json';
   }
 
   apply(compiler: any) {
@@ -119,7 +123,7 @@ export default class ReactFlightWebpackPlugin {
           contextResolver,
           compiler.inputFileSystem,
           contextModuleFactory,
-          function(err, resolvedClientRefs) {
+          function (err, resolvedClientRefs) {
             if (err) {
               callback(err);
               return;
@@ -144,6 +148,7 @@ export default class ReactFlightWebpackPlugin {
           new NullDependency.Template(),
         );
 
+        // $FlowFixMe[missing-local-annot]
         const handler = parser => {
           // We need to add all client references as dependency of something in the graph so
           // Webpack knows which entries need to know about the relevant chunks and include the
@@ -204,28 +209,38 @@ export default class ReactFlightWebpackPlugin {
           name: PLUGIN_NAME,
           stage: Compilation.PROCESS_ASSETS_STAGE_REPORT,
         },
-        function() {
+        function () {
           if (clientFileNameFound === false) {
             compilation.warnings.push(
               new WebpackError(
-                `Client runtime at ${clientImportName} was not found. React Server Components module map file ${_this.manifestFilename} was not created.`,
+                `Client runtime at ${clientImportName} was not found. React Server Components module map file ${_this.clientManifestFilename} was not created.`,
               ),
             );
             return;
           }
 
-          const json = {};
-          compilation.chunkGroups.forEach(function(chunkGroup) {
-            const chunkIds = chunkGroup.chunks.map(function(c) {
+          const clientManifest: {
+            [string]: {
+              [string]: {chunks: $FlowFixMe, id: string, name: string},
+            },
+          } = {};
+          const ssrManifest: {
+            [string]: {
+              [string]: {specifier: string, name: string},
+            },
+          } = {};
+          compilation.chunkGroups.forEach(function (chunkGroup) {
+            const chunkIds = chunkGroup.chunks.map(function (c) {
               return c.id;
             });
 
-            function recordModule(id, module) {
+            // $FlowFixMe[missing-local-annot]
+            function recordModule(id: $FlowFixMe, module) {
               // TODO: Hook into deps instead of the target module.
               // That way we know by the type of dep whether to include.
               // It also resolves conflicts when the same module is in multiple chunks.
 
-              if (!/\.client\.(js|ts)x?$/.test(module.resource)) {
+              if (!/\.(js|ts)x?$/.test(module.resource)) {
                 return;
               }
 
@@ -233,33 +248,45 @@ export default class ReactFlightWebpackPlugin {
                 .getExportsInfo(module)
                 .getProvidedExports();
 
-              const moduleExports = {};
-              ['', '*']
-                .concat(
-                  Array.isArray(moduleProvidedExports)
-                    ? moduleProvidedExports
-                    : [],
-                )
-                .forEach(function(name) {
-                  moduleExports[name] = {
-                    id,
-                    chunks: chunkIds,
-                    name: name,
-                  };
-                });
+              const clientExports: {
+                [string]: {chunks: $FlowFixMe, id: $FlowFixMe, name: string},
+              } = {};
+
+              const ssrExports: {
+                [string]: {specifier: string, name: string},
+              } = {};
+
               const href = pathToFileURL(module.resource).href;
 
               if (href !== undefined) {
-                json[href] = moduleExports;
+                ['', '*']
+                  .concat(
+                    Array.isArray(moduleProvidedExports)
+                      ? moduleProvidedExports
+                      : [],
+                  )
+                  .forEach(function (name) {
+                    clientExports[name] = {
+                      id,
+                      chunks: chunkIds,
+                      name: name,
+                    };
+                    ssrExports[name] = {
+                      specifier: href,
+                      name: name,
+                    };
+                  });
+
+                clientManifest[href] = clientExports;
+                ssrManifest[id] = ssrExports;
               }
             }
 
-            chunkGroup.chunks.forEach(function(chunk) {
-              const chunkModules = compilation.chunkGraph.getChunkModulesIterable(
-                chunk,
-              );
+            chunkGroup.chunks.forEach(function (chunk) {
+              const chunkModules =
+                compilation.chunkGraph.getChunkModulesIterable(chunk);
 
-              Array.from(chunkModules).forEach(function(module) {
+              Array.from(chunkModules).forEach(function (module) {
                 const moduleId = compilation.chunkGraph.getModuleId(module);
 
                 recordModule(moduleId, module);
@@ -273,10 +300,15 @@ export default class ReactFlightWebpackPlugin {
             });
           });
 
-          const output = JSON.stringify(json, null, 2);
+          const clientOutput = JSON.stringify(clientManifest, null, 2);
           compilation.emitAsset(
-            _this.manifestFilename,
-            new sources.RawSource(output, false),
+            _this.clientManifestFilename,
+            new sources.RawSource(clientOutput, false),
+          );
+          const ssrOutput = JSON.stringify(ssrManifest, null, 2);
+          compilation.emitAsset(
+            _this.ssrManifestFilename,
+            new sources.RawSource(ssrOutput, false),
           );
         },
       );
@@ -308,7 +340,8 @@ export default class ReactFlightWebpackPlugin {
           cb(null, [new ClientReferenceDependency(clientReferencePath)]);
           return;
         }
-        const clientReferenceSearch: ClientReferenceSearchPath = clientReferencePath;
+        const clientReferenceSearch: ClientReferenceSearchPath =
+          clientReferencePath;
         contextResolver.resolve(
           {},
           context,
@@ -350,7 +383,7 @@ export default class ReactFlightWebpackPlugin {
         result: $ReadOnlyArray<$ReadOnlyArray<ClientReferenceDependency>>,
       ): void => {
         if (err) return callback(err);
-        const flat = [];
+        const flat: Array<any> = [];
         for (let i = 0; i < result.length; i++) {
           // $FlowFixMe[method-unbinding]
           flat.push.apply(flat, result[i]);

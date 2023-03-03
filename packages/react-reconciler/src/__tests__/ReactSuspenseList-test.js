@@ -28,7 +28,7 @@ describe('ReactSuspenseList', () => {
 
   function createAsyncText(text) {
     let resolved = false;
-    const Component = function() {
+    const Component = function () {
       if (!resolved) {
         Scheduler.unstable_yieldValue('Suspend! [' + text + ']');
         throw promise;
@@ -36,7 +36,7 @@ describe('ReactSuspenseList', () => {
       return <Text text={text} />;
     };
     const promise = new Promise(resolve => {
-      Component.resolve = function() {
+      Component.resolve = function () {
         resolved = true;
         return resolve();
       };
@@ -1166,7 +1166,7 @@ describe('ReactSuspenseList', () => {
     const F = createAsyncText('F');
 
     function createSyncText(text) {
-      return function() {
+      return function () {
         return <Text text={text} />;
       };
     }
@@ -1362,13 +1362,9 @@ describe('ReactSuspenseList', () => {
     }
 
     // This render is only CPU bound. Nothing suspends.
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        ReactNoop.render(<Foo />);
-      });
-    } else {
+    React.startTransition(() => {
       ReactNoop.render(<Foo />);
-    }
+    });
 
     expect(Scheduler).toFlushAndYieldThrough(['A']);
 
@@ -1546,13 +1542,9 @@ describe('ReactSuspenseList', () => {
     }
 
     // This render is only CPU bound. Nothing suspends.
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        ReactNoop.render(<Foo />);
-      });
-    } else {
+    React.startTransition(() => {
       ReactNoop.render(<Foo />);
-    }
+    });
 
     expect(Scheduler).toFlushAndYieldThrough(['A']);
 
@@ -2548,15 +2540,9 @@ describe('ReactSuspenseList', () => {
     expect(ReactNoop).toMatchRenderedOutput(null);
 
     await act(async () => {
-      // Add a few items at the end.
-      if (gate(flags => flags.enableSyncDefaultUpdates)) {
-        React.startTransition(() => {
-          updateLowPri(true);
-        });
-      } else {
+      React.startTransition(() => {
         updateLowPri(true);
-      }
-
+      });
       // Flush partially through.
       expect(Scheduler).toFlushAndYieldThrough(['B', 'C']);
 
@@ -2692,14 +2678,9 @@ describe('ReactSuspenseList', () => {
       );
     }
 
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        ReactNoop.render(<App />);
-      });
-    } else {
+    React.startTransition(() => {
       ReactNoop.render(<App />);
-    }
-
+    });
     expect(Scheduler).toFlushAndYieldThrough([
       'App',
       'First Pass A',
@@ -2765,14 +2746,9 @@ describe('ReactSuspenseList', () => {
       );
     }
 
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        ReactNoop.render(<App />);
-      });
-    } else {
+    React.startTransition(() => {
       ReactNoop.render(<App />);
-    }
-
+    });
     expect(Scheduler).toFlushAndYieldThrough([
       'App',
       'First Pass A',

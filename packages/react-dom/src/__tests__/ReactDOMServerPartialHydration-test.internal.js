@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
+ * @jest-environment ./scripts/jest/ReactDOMServerIntegrationEnvironment
  */
 
 'use strict';
@@ -23,7 +24,7 @@ let IdleEventPriority;
 
 function normalizeCodeLocInfo(strOrErr) {
   if (strOrErr && strOrErr.replace) {
-    return strOrErr.replace(/\n +(?:at|in) ([\S]+)[^\n]*/g, function(m, name) {
+    return strOrErr.replace(/\n +(?:at|in) ([\S]+)[^\n]*/g, function (m, name) {
       return '\n    in ' + name + ' (at **)';
     });
   }
@@ -94,7 +95,7 @@ class TestAppClass extends React.Component {
 
 describe('ReactDOMServerPartialHydration', () => {
   beforeEach(() => {
-    jest.resetModuleRegistry();
+    jest.resetModules();
 
     ReactFeatureFlags = require('shared/ReactFeatureFlags');
     ReactFeatureFlags.enableSuspenseCallback = true;
@@ -449,10 +450,9 @@ describe('ReactDOMServerPartialHydration', () => {
     expect(deleted.length).toBe(0);
 
     // Performing an update should force it to delete the boundary
-    root.render(<App value={true} />);
-
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      root.render(<App value={true} />);
+    });
 
     expect(hydrated.length).toBe(1);
     expect(deleted.length).toBe(1);
@@ -945,13 +945,12 @@ describe('ReactDOMServerPartialHydration', () => {
     root.render(<App text="Hi" className="hi" />);
 
     // At the same time, resolving the promise so that rendering can complete.
-    suspend = false;
-    resolve();
-    await promise;
-
     // This should first complete the hydration and then flush the update onto the hydrated state.
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      suspend = false;
+      resolve();
+      await promise;
+    });
 
     // The new span should be the same since we should have successfully hydrated
     // before changing it.
@@ -1093,9 +1092,9 @@ describe('ReactDOMServerPartialHydration', () => {
     expect(ref.current).toBe(null);
 
     // Render an update, but leave it still suspended.
-    root.render(<App text="Hi" className="hi" />);
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      root.render(<App text="Hi" className="hi" />);
+    });
 
     // Flushing now should delete the existing content and show the fallback.
 
@@ -1104,12 +1103,11 @@ describe('ReactDOMServerPartialHydration', () => {
     expect(container.textContent).toBe('Loading...');
 
     // Unsuspending shows the content.
-    suspend = false;
-    resolve();
-    await promise;
-
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      suspend = false;
+      resolve();
+      await promise;
+    });
 
     const span = container.getElementsByTagName('span')[0];
     expect(span.textContent).toBe('Hi');
@@ -1174,23 +1172,21 @@ describe('ReactDOMServerPartialHydration', () => {
     expect(ref.current).toBe(span);
 
     // Render an update, but leave it still suspended.
-    root.render(<App text="Hi" className="hi" />);
-
     // Flushing now should delete the existing content and show the fallback.
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      root.render(<App text="Hi" className="hi" />);
+    });
 
     expect(container.getElementsByTagName('span').length).toBe(1);
     expect(ref.current).toBe(span);
     expect(container.textContent).toBe('');
 
     // Unsuspending shows the content.
-    suspend = false;
-    resolve();
-    await promise;
-
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      suspend = false;
+      resolve();
+      await promise;
+    });
 
     expect(span.textContent).toBe('Hi');
     expect(span.className).toBe('hi');
@@ -1252,20 +1248,21 @@ describe('ReactDOMServerPartialHydration', () => {
     expect(ref.current).toBe(null);
 
     // Render an update, but leave it still suspended.
-    root.render(<App text="Hi" className="hi" />);
-
     // Flushing now should delete the existing content and show the fallback.
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      root.render(<App text="Hi" className="hi" />);
+    });
 
     expect(container.getElementsByTagName('span').length).toBe(0);
     expect(ref.current).toBe(null);
     expect(container.textContent).toBe('Loading...');
 
     // Unsuspending shows the content.
-    suspend = false;
-    resolve();
-    await promise;
+    await act(async () => {
+      suspend = false;
+      resolve();
+      await promise;
+    });
 
     Scheduler.unstable_flushAll();
     jest.runAllTimers();
@@ -1490,13 +1487,12 @@ describe('ReactDOMServerPartialHydration', () => {
     );
 
     // At the same time, resolving the promise so that rendering can complete.
-    suspend = false;
-    resolve();
-    await promise;
-
     // This should first complete the hydration and then flush the update onto the hydrated state.
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      suspend = false;
+      resolve();
+      await promise;
+    });
 
     // Since this should have been hydrated, this should still be the same span.
     const newSpan = container.getElementsByTagName('span')[0];
@@ -1569,27 +1565,25 @@ describe('ReactDOMServerPartialHydration', () => {
     expect(ref.current).toBe(null);
 
     // Render an update, but leave it still suspended.
-    root.render(
-      <Context.Provider value={{text: 'Hi', className: 'hi'}}>
-        <App />
-      </Context.Provider>,
-    );
-
     // Flushing now should delete the existing content and show the fallback.
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      root.render(
+        <Context.Provider value={{text: 'Hi', className: 'hi'}}>
+          <App />
+        </Context.Provider>,
+      );
+    });
 
     expect(container.getElementsByTagName('span').length).toBe(0);
     expect(ref.current).toBe(null);
     expect(container.textContent).toBe('Loading...');
 
     // Unsuspending shows the content.
-    suspend = false;
-    resolve();
-    await promise;
-
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      suspend = false;
+      resolve();
+      await promise;
+    });
 
     const span = container.getElementsByTagName('span')[0];
     expect(span.textContent).toBe('Hi');
@@ -2050,14 +2044,7 @@ describe('ReactDOMServerPartialHydration', () => {
     suspend = true;
 
     await act(async () => {
-      if (gate(flags => flags.enableSyncDefaultUpdates)) {
-        expect(Scheduler).toFlushAndYieldThrough(['Before', 'After']);
-      } else {
-        expect(Scheduler).toFlushAndYieldThrough(['Before']);
-        // This took a long time to render.
-        Scheduler.unstable_advanceTime(1000);
-        expect(Scheduler).toFlushAndYield(['After']);
-      }
+      expect(Scheduler).toFlushAndYieldThrough(['Before', 'After']);
 
       // This will cause us to skip the second row completely.
     });
@@ -2320,16 +2307,15 @@ describe('ReactDOMServerPartialHydration', () => {
 
     // Render an update, which will be higher or the same priority as pinging the hydration.
     // The new update doesn't suspend.
-    root.render(
-      <ClassName.Provider value={'hi'}>
-        <App text="Hi" />
-      </ClassName.Provider>,
-    );
-
     // Since we're still suspended on the original data, we can't hydrate.
     // This will force all expiration times to flush.
-    Scheduler.unstable_flushAll();
-    jest.runAllTimers();
+    await act(async () => {
+      root.render(
+        <ClassName.Provider value={'hi'}>
+          <App text="Hi" />
+        </ClassName.Provider>,
+      );
+    });
 
     // This will now be a new span because we weren't able to hydrate before
     const newSpan = container.getElementsByTagName('span')[0];
@@ -3127,7 +3113,7 @@ describe('ReactDOMServerPartialHydration', () => {
     // We're now partially hydrated.
     await act(async () => {
       form.dispatchEvent(
-        new Event('submit', {
+        new window.Event('submit', {
           bubbles: true,
         }),
       );

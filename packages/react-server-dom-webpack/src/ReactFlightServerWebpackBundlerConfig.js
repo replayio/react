@@ -7,34 +7,52 @@
  * @flow
  */
 
+import type {ReactModel} from 'react-server/src/ReactFlightServer';
+
 type WebpackMap = {
   [filepath: string]: {
-    [name: string]: ModuleMetaData,
+    [name: string]: ClientReferenceMetadata,
   },
 };
 
 export type BundlerConfig = WebpackMap;
 
+export type ServerReference<T: Function> = T & {
+  $$typeof: symbol,
+  $$filepath: string,
+  $$name: string,
+  $$bound: Array<ReactModel>,
+};
+
+export type ServerReferenceMetadata = {
+  id: string,
+  name: string,
+  bound: Promise<Array<ReactModel>>,
+};
+
 // eslint-disable-next-line no-unused-vars
-export type ModuleReference<T> = {
+export type ClientReference<T> = {
   $$typeof: symbol,
   filepath: string,
   name: string,
   async: boolean,
 };
 
-export type ModuleMetaData = {
+export type ClientReferenceMetadata = {
   id: string,
   chunks: Array<string>,
   name: string,
   async: boolean,
 };
 
-export type ModuleKey = string;
+export type ClientReferenceKey = string;
 
-const MODULE_TAG = Symbol.for('react.module.reference');
+const CLIENT_REFERENCE_TAG = Symbol.for('react.client.reference');
+const SERVER_REFERENCE_TAG = Symbol.for('react.server.reference');
 
-export function getModuleKey(reference: ModuleReference<any>): ModuleKey {
+export function getClientReferenceKey(
+  reference: ClientReference<any>,
+): ClientReferenceKey {
   return (
     reference.filepath +
     '#' +
@@ -43,17 +61,21 @@ export function getModuleKey(reference: ModuleReference<any>): ModuleKey {
   );
 }
 
-export function isModuleReference(reference: Object): boolean {
-  return reference.$$typeof === MODULE_TAG;
+export function isClientReference(reference: Object): boolean {
+  return reference.$$typeof === CLIENT_REFERENCE_TAG;
 }
 
-export function resolveModuleMetaData<T>(
+export function isServerReference(reference: Object): boolean {
+  return reference.$$typeof === SERVER_REFERENCE_TAG;
+}
+
+export function resolveClientReferenceMetadata<T>(
   config: BundlerConfig,
-  moduleReference: ModuleReference<T>,
-): ModuleMetaData {
+  clientReference: ClientReference<T>,
+): ClientReferenceMetadata {
   const resolvedModuleData =
-    config[moduleReference.filepath][moduleReference.name];
-  if (moduleReference.async) {
+    config[clientReference.filepath][clientReference.name];
+  if (clientReference.async) {
     return {
       id: resolvedModuleData.id,
       chunks: resolvedModuleData.chunks,
@@ -63,4 +85,15 @@ export function resolveModuleMetaData<T>(
   } else {
     return resolvedModuleData;
   }
+}
+
+export function resolveServerReferenceMetadata<T>(
+  config: BundlerConfig,
+  serverReference: ServerReference<T>,
+): ServerReferenceMetadata {
+  return {
+    id: serverReference.$$filepath,
+    name: serverReference.$$name,
+    bound: Promise.resolve(serverReference.$$bound),
+  };
 }

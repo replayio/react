@@ -48,7 +48,7 @@ export type AttributeConfiguration = $ReadOnly<{
   [propName: string]: AnyAttributeType,
   style: $ReadOnly<{
     [propName: string]: AnyAttributeType,
-    ...,
+    ...
   }>,
   ...
 }>;
@@ -57,7 +57,7 @@ export type PartialAttributeConfiguration = $ReadOnly<{
   [propName: string]: AnyAttributeType,
   style?: $ReadOnly<{
     [propName: string]: AnyAttributeType,
-    ...,
+    ...
   }>,
   ...
 }>;
@@ -76,13 +76,13 @@ export type ViewConfig = $ReadOnly<{
         skipBubbling?: ?boolean,
       }>,
     }>,
-    ...,
+    ...
   }>,
   directEventTypes?: $ReadOnly<{
     [eventName: string]: $ReadOnly<{
       registrationName: string,
     }>,
-    ...,
+    ...
   }>,
   uiViewClassName: string,
   validAttributes: AttributeConfiguration,
@@ -95,18 +95,18 @@ export type PartialViewConfig = $ReadOnly<{
   validAttributes?: PartialAttributeConfiguration,
 }>;
 
-export type NativeMethods = $ReadOnly<{
-  blur(): void,
-  focus(): void,
-  measure(callback: MeasureOnSuccessCallback): void,
-  measureInWindow(callback: MeasureInWindowOnSuccessCallback): void,
+export interface NativeMethods {
+  blur(): void;
+  focus(): void;
+  measure(callback: MeasureOnSuccessCallback): void;
+  measureInWindow(callback: MeasureInWindowOnSuccessCallback): void;
   measureLayout(
     relativeToNativeNode: number | ElementRef<HostComponent<mixed>>,
     onSuccess: MeasureLayoutOnSuccessCallback,
     onFail?: () => void,
-  ): void,
-  setNativeProps(nativeProps: {...}): void,
-}>;
+  ): void;
+  setNativeProps(nativeProps: {...}): void;
+}
 
 export type HostComponent<T> = AbstractComponent<T, $ReadOnly<NativeMethods>>;
 
@@ -119,7 +119,7 @@ type SecretInternalsType = {
 
 type InspectorDataProps = $ReadOnly<{
   [propName: string]: string,
-  ...,
+  ...
 }>;
 
 type InspectorDataSource = $ReadOnly<{

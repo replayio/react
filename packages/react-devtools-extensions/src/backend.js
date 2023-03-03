@@ -8,7 +8,8 @@
 
 let welcomeHasInitialized = false;
 
-function welcome(event) {
+// $FlowFixMe[missing-local-annot]
+function welcome(event: $FlowFixMe) {
   if (
     event.source !== window ||
     event.data.source !== 'react-devtools-content-script'
@@ -46,7 +47,7 @@ window.logMessage('RDT initializing');
 setup(window.__REACT_DEVTOOLS_GLOBAL_HOOK__);
 window.logMessage('RDT setup complete');
 
-function setup(hook) {
+function setup(hook: any) {
   if (hook == null) {
     // DevTools didn't get injected into this page (maybe b'c of the contentType).
     return;
@@ -55,12 +56,12 @@ function setup(hook) {
   const Agent = require('react-devtools-shared/src/backend/agent').default;
   const Bridge = require('react-devtools-shared/src/bridge').default;
   const {initBackend} = require('react-devtools-shared/src/backend');
-  const setupNativeStyleEditor = require('react-devtools-shared/src/backend/NativeStyleEditor/setupNativeStyleEditor')
-    .default;
+  const setupNativeStyleEditor =
+    require('react-devtools-shared/src/backend/NativeStyleEditor/setupNativeStyleEditor').default;
 
   const bridge = new Bridge({
     listen(fn) {
-      const listener = event => {
+      const listener = (event: $FlowFixMe) => {
         if (
           event.source !== window ||
           !event.data ||

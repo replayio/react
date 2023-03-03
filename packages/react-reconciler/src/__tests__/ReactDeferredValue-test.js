@@ -15,6 +15,8 @@ let startTransition;
 let useDeferredValue;
 let useMemo;
 let useState;
+let assertLog;
+let waitForPaint;
 
 describe('ReactDeferredValue', () => {
   beforeEach(() => {
@@ -28,6 +30,10 @@ describe('ReactDeferredValue', () => {
     useDeferredValue = React.useDeferredValue;
     useMemo = React.useMemo;
     useState = React.useState;
+
+    const InternalTestUtils = require('internal-test-utils');
+    assertLog = InternalTestUtils.assertLog;
+    waitForPaint = InternalTestUtils.waitForPaint;
   });
 
   function Text({text}) {
@@ -41,9 +47,10 @@ describe('ReactDeferredValue', () => {
       // render. A naive implementation would endlessly spawn deferred renders.
       const {value: deferredValue} = useDeferredValue({value});
 
-      const child = useMemo(() => <Text text={'Original: ' + value} />, [
-        value,
-      ]);
+      const child = useMemo(
+        () => <Text text={'Original: ' + value} />,
+        [value],
+      );
 
       const deferredChild = useMemo(
         () => <Text text={'Deferred: ' + deferredValue} />,
@@ -64,15 +71,14 @@ describe('ReactDeferredValue', () => {
     await act(async () => {
       root.render(<App value={1} />);
     });
-    expect(Scheduler).toHaveYielded(['Original: 1', 'Deferred: 1']);
+    assertLog(['Original: 1', 'Deferred: 1']);
 
     // If it's an urgent update, the value is deferred
     await act(async () => {
       root.render(<App value={2} />);
 
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 2']);
-      // The deferred value updates in a separate render
-      expect(Scheduler).toFlushUntilNextPaint(['Deferred: 2']);
+      await waitForPaint(['Original: 2']);
+      await waitForPaint(['Deferred: 2']);
     });
     expect(root).toMatchRenderedOutput(
       <div>
@@ -86,8 +92,7 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={3} />);
       });
-      // The deferred value updates in the same render as the original
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 3', 'Deferred: 3']);
+      await waitForPaint(['Original: 3', 'Deferred: 3']);
     });
     expect(root).toMatchRenderedOutput(
       <div>
@@ -101,9 +106,10 @@ describe('ReactDeferredValue', () => {
     function App({value}) {
       const deferredValue = useDeferredValue(value);
 
-      const child = useMemo(() => <Text text={'Original: ' + value} />, [
-        value,
-      ]);
+      const child = useMemo(
+        () => <Text text={'Original: ' + value} />,
+        [value],
+      );
 
       const deferredChild = useMemo(
         () => <Text text={'Deferred: ' + deferredValue} />,
@@ -124,15 +130,14 @@ describe('ReactDeferredValue', () => {
     await act(async () => {
       root.render(<App value={1} />);
     });
-    expect(Scheduler).toHaveYielded(['Original: 1', 'Deferred: 1']);
+    assertLog(['Original: 1', 'Deferred: 1']);
 
     // If it's an urgent update, the value is deferred
     await act(async () => {
       root.render(<App value={2} />);
 
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 2']);
-      // The deferred value updates in a separate render
-      expect(Scheduler).toFlushUntilNextPaint(['Deferred: 2']);
+      await waitForPaint(['Original: 2']);
+      await waitForPaint(['Deferred: 2']);
     });
     expect(root).toMatchRenderedOutput(
       <div>
@@ -146,8 +151,7 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={3} />);
       });
-      // The deferred value updates in the same render as the original
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 3', 'Deferred: 3']);
+      await waitForPaint(['Original: 3', 'Deferred: 3']);
     });
     expect(root).toMatchRenderedOutput(
       <div>
@@ -166,9 +170,10 @@ describe('ReactDeferredValue', () => {
 
       const deferredValue = useDeferredValue(value);
 
-      const child = useMemo(() => <Text text={'Original: ' + value} />, [
-        value,
-      ]);
+      const child = useMemo(
+        () => <Text text={'Original: ' + value} />,
+        [value],
+      );
 
       const deferredChild = useMemo(
         () => <Text text={'Deferred: ' + deferredValue} />,
@@ -189,15 +194,14 @@ describe('ReactDeferredValue', () => {
     await act(async () => {
       root.render(<App value={1} />);
     });
-    expect(Scheduler).toHaveYielded(['Original: 1', 'Deferred: 1']);
+    assertLog(['Original: 1', 'Deferred: 1']);
 
     // If it's an urgent update, the value is deferred
     await act(async () => {
       root.render(<App value={2} />);
 
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 2']);
-      // The deferred value updates in a separate render
-      expect(Scheduler).toFlushUntilNextPaint(['Deferred: 2']);
+      await waitForPaint(['Original: 2']);
+      await waitForPaint(['Deferred: 2']);
     });
     expect(root).toMatchRenderedOutput(
       <div>
@@ -211,8 +215,7 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={3} />);
       });
-      // The deferred value updates in the same render as the original
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 3', 'Deferred: 3']);
+      await waitForPaint(['Original: 3', 'Deferred: 3']);
     });
     expect(root).toMatchRenderedOutput(
       <div>
@@ -231,9 +234,10 @@ describe('ReactDeferredValue', () => {
 
       const deferredValue = useDeferredValue(value);
 
-      const child = useMemo(() => <Text text={'Original: ' + value} />, [
-        value,
-      ]);
+      const child = useMemo(
+        () => <Text text={'Original: ' + value} />,
+        [value],
+      );
 
       const deferredChild = useMemo(
         () => <Text text={'Deferred: ' + deferredValue} />,
@@ -253,7 +257,7 @@ describe('ReactDeferredValue', () => {
     // Initial render
     await act(async () => {
       root.render(<App value={1} />);
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 1', 'Deferred: 1']);
+      await waitForPaint(['Original: 1', 'Deferred: 1']);
       expect(root).toMatchRenderedOutput(
         <div>
           <div>Original: 1</div>
@@ -266,7 +270,7 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={2} />);
       });
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 2', 'Deferred: 2']);
+      await waitForPaint(['Original: 2', 'Deferred: 2']);
       expect(root).toMatchRenderedOutput(
         <div>
           <div>Original: 2</div>
@@ -277,17 +281,14 @@ describe('ReactDeferredValue', () => {
 
     await act(async () => {
       root.render(<App value={3} />);
-      // In the regression, the memoized value was not updated during non-urgent
-      // updates, so this would flip the deferred value back to the initial
-      // value (1) instead of reusing the current one (2).
-      expect(Scheduler).toFlushUntilNextPaint(['Original: 3']);
+      await waitForPaint(['Original: 3']);
       expect(root).toMatchRenderedOutput(
         <div>
           <div>Original: 3</div>
           <div>Deferred: 2</div>
         </div>,
       );
-      expect(Scheduler).toFlushUntilNextPaint(['Deferred: 3']);
+      await waitForPaint(['Deferred: 3']);
       expect(root).toMatchRenderedOutput(
         <div>
           <div>Original: 3</div>

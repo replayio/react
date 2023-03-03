@@ -32,11 +32,11 @@ import {
   getWrappedDisplayName,
   getDefaultComponentFilters,
   getInObject,
-  getUID,
   renamePathInObject,
   setInObject,
   utfEncodeString,
 } from 'react-devtools-shared/src/utils';
+import {gt, gte} from 'react-devtools-shared/src/backend/utils';
 import {
   cleanForBridge,
   copyToClipboard,
@@ -49,8 +49,6 @@ import {
   __DEBUG__,
   PROFILING_FLAG_BASIC_SUPPORT,
   PROFILING_FLAG_TIMELINE_SUPPORT,
-  SESSION_STORAGE_RELOAD_AND_PROFILE_KEY,
-  SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
   TREE_OPERATION_ADD,
   TREE_OPERATION_REMOVE,
   TREE_OPERATION_REMOVE_ROOT,
@@ -103,29 +101,6 @@ import hasOwnProperty from 'shared/hasOwnProperty';
 import {getStyleXData} from './StyleX/utils';
 import {createProfilingHooks} from './profilingHooks';
 
-// https://www.npmjs.com/package/semver-compare
-function semvercmp(a: string, b: string) {
-  var pa = a.split('.');
-  var pb = b.split('.');
-  for (var i = 0; i < 3; i++) {
-    var na = Number(pa[i]);
-    var nb = Number(pb[i]);
-    if (na > nb) return 1;
-    if (nb > na) return -1;
-    if (!isNaN(na) && isNaN(nb)) return 1;
-    if (isNaN(na) && !isNaN(nb)) return -1;
-  }
-  return 0;
-}
-
-function gt(a: string, b: string) {
-  return semvercmp(a, b) === 1;
-}
-
-function gte(a: string, b: string) {
-  return semvercmp(a, b) > -1;
-}
-
 import type {GetTimelineData, ToggleProfilingStatus} from './profilingHooks';
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
 import type {
@@ -175,9 +150,7 @@ const getCurrentTime =
     ? () => performance.now()
     : () => Date.now();
 
-export function getInternalReactConstants(
-  version: string,
-): {
+export function getInternalReactConstants(version: string): {
   getDisplayNameForFiber: getDisplayNameForFiberType,
   getTypeSymbol: getTypeSymbolType,
   ReactPriorityLevels: ReactPriorityLevelsType,
@@ -246,7 +219,7 @@ export function getInternalReactConstants(
       HostComponent: 5,
       HostPortal: 4,
       HostRoot: 3,
-      HostResource: 26, // In reality, 18.2+. But doesn't hurt to include it here
+      HostHoistable: 26, // In reality, 18.2+. But doesn't hurt to include it here
       HostSingleton: 27, // Same as above
       HostText: 6,
       IncompleteClassComponent: 17,
@@ -280,7 +253,7 @@ export function getInternalReactConstants(
       HostComponent: 5,
       HostPortal: 4,
       HostRoot: 3,
-      HostResource: -1, // Doesn't exist yet
+      HostHoistable: -1, // Doesn't exist yet
       HostSingleton: -1, // Doesn't exist yet
       HostText: 6,
       IncompleteClassComponent: 17,
@@ -313,7 +286,7 @@ export function getInternalReactConstants(
       HostComponent: 5,
       HostPortal: 4,
       HostRoot: 3,
-      HostResource: -1, // Doesn't exist yet
+      HostHoistable: -1, // Doesn't exist yet
       HostSingleton: -1, // Doesn't exist yet
       HostText: 6,
       IncompleteClassComponent: 17,
@@ -346,7 +319,7 @@ export function getInternalReactConstants(
       HostComponent: 7,
       HostPortal: 6,
       HostRoot: 5,
-      HostResource: -1, // Doesn't exist yet
+      HostHoistable: -1, // Doesn't exist yet
       HostSingleton: -1, // Doesn't exist yet
       HostText: 8,
       IncompleteClassComponent: -1, // Doesn't exist yet
@@ -379,7 +352,7 @@ export function getInternalReactConstants(
       HostComponent: 5,
       HostPortal: 4,
       HostRoot: 3,
-      HostResource: -1, // Doesn't exist yet
+      HostHoistable: -1, // Doesn't exist yet
       HostSingleton: -1, // Doesn't exist yet
       HostText: 6,
       IncompleteClassComponent: -1, // Doesn't exist yet
@@ -420,7 +393,7 @@ export function getInternalReactConstants(
     IndeterminateComponent,
     ForwardRef,
     HostRoot,
-    HostResource,
+    HostHoistable,
     HostSingleton,
     HostComponent,
     HostPortal,
@@ -438,7 +411,7 @@ export function getInternalReactConstants(
     TracingMarkerComponent,
   } = ReactTypeOfWork;
 
-  function resolveFiberType(type: any) {
+  function resolveFiberType(type: any): $FlowFixMe {
     const typeSymbol = getTypeSymbol(type);
     switch (typeSymbol) {
       case MEMO_NUMBER:
@@ -488,7 +461,7 @@ export function getInternalReactConstants(
         return null;
       case HostComponent:
       case HostSingleton:
-      case HostResource:
+      case HostHoistable:
         return type;
       case HostPortal:
       case HostText:
@@ -614,7 +587,7 @@ export function attach(
     Fragment,
     FunctionComponent,
     HostRoot,
-    HostResource,
+    HostHoistable,
     HostSingleton,
     HostPortal,
     HostComponent,
@@ -864,12 +837,7 @@ export function attach(
         'color: purple;',
         'color: black;',
       );
-      console.log(
-        new Error().stack
-          .split('\n')
-          .slice(1)
-          .join('\n'),
-      );
+      console.log(new Error().stack.split('\n').slice(1).join('\n'));
       console.groupEnd();
     }
   };
@@ -1060,7 +1028,7 @@ export function attach(
       case HostRoot:
         return ElementTypeRoot;
       case HostComponent:
-      case HostResource:
+      case HostHoistable:
       case HostSingleton:
         return ElementTypeHostComponent;
       case HostPortal:
@@ -1674,7 +1642,7 @@ export function attach(
     }
   }
 
-  let flushPendingErrorsAndWarningsAfterDelayTimeoutID = null;
+  let flushPendingErrorsAndWarningsAfterDelayTimeoutID: null | TimeoutID = null;
 
   function clearPendingErrorsAndWarningsAfterDelay() {
     if (flushPendingErrorsAndWarningsAfterDelayTimeoutID !== null) {
@@ -1837,11 +1805,11 @@ export function attach(
       pendingSimulatedUnmountedIDs.length +
       (pendingUnmountedRootID === null ? 0 : 1);
 
-    const operations = new Array(
+    const operations = new Array<number>(
       // Identify which renderer this update is coming from.
       2 + // [rendererID, rootFiberID]
-      // How big is the string table?
-      1 + // [stringTableLength]
+        // How big is the string table?
+        1 + // [stringTableLength]
         // Then goes the actual string table.
         pendingStringTableLength +
         // All unmounts are batched in a single message.
@@ -2113,9 +2081,8 @@ export function attach(
 
       // If we have the tree selection from previous reload, try to match this Fiber.
       // Also remember whether to do the same for siblings.
-      const mightSiblingsBeOnTrackedPath = updateTrackedPathStateBeforeMount(
-        fiber,
-      );
+      const mightSiblingsBeOnTrackedPath =
+        updateTrackedPathStateBeforeMount(fiber);
 
       const shouldIncludeInTree = !shouldFilterFiber(fiber);
       if (shouldIncludeInTree) {
@@ -2273,7 +2240,8 @@ export function attach(
           // Note that we should do this for any fiber we performed work on, regardless of its actualDuration value.
           // In some cases actualDuration might be 0 for fibers we worked on (particularly if we're using Date.now)
           // In other cases (e.g. Memo) actualDuration might be greater than 0 even if we "bailed out".
-          const metadata = ((currentCommitProfilingMetadata: any): CommitProfilingData);
+          const metadata =
+            ((currentCommitProfilingMetadata: any): CommitProfilingData);
           metadata.durations.push(id, actualDuration, selfDuration);
           metadata.maxActualDuration = Math.max(
             metadata.maxActualDuration,
@@ -2587,7 +2555,7 @@ export function attach(
     // We don't patch any methods so there is no cleanup.
   }
 
-  function rootSupportsProfiling(root) {
+  function rootSupportsProfiling(root: any) {
     if (root.memoizedInteractions != null) {
       // v16 builds include this field for the scheduler/tracing API.
       return true;
@@ -2651,7 +2619,7 @@ export function attach(
     }
   }
 
-  function getUpdatersList(root): Array<SerializedElement> | null {
+  function getUpdatersList(root: any): Array<SerializedElement> | null {
     return root.memoizedUpdaters != null
       ? Array.from(root.memoizedUpdaters)
           .filter(fiber => getFiberIDUnsafe(fiber) !== null)
@@ -2659,7 +2627,7 @@ export function attach(
       : null;
   }
 
-  function handleCommitFiberUnmount(fiber) {
+  function handleCommitFiberUnmount(fiber: any) {
     // If the untrackFiberSet already has the unmounted Fiber, this means we've already
     // recordedUnmount, so we don't need to do it again. If we don't do this, we might
     // end up double-deleting Fibers in some cases (like Legacy Suspense).
@@ -2671,21 +2639,21 @@ export function attach(
     }
   }
 
-  function handlePostCommitFiberRoot(root) {
+  function handlePostCommitFiberRoot(root: any) {
     if (isProfiling && rootSupportsProfiling(root)) {
       if (currentCommitProfilingMetadata !== null) {
-        const {effectDuration, passiveEffectDuration} = getEffectDurations(
-          root,
-        );
+        const {effectDuration, passiveEffectDuration} =
+          getEffectDurations(root);
         // $FlowFixMe[incompatible-use] found when upgrading Flow
         currentCommitProfilingMetadata.effectDuration = effectDuration;
         // $FlowFixMe[incompatible-use] found when upgrading Flow
-        currentCommitProfilingMetadata.passiveEffectDuration = passiveEffectDuration;
+        currentCommitProfilingMetadata.passiveEffectDuration =
+          passiveEffectDuration;
       }
     }
   }
 
-  function handleCommitFiberRoot(root, priorityLevel) {
+  function handleCommitFiberRoot(root: any, priorityLevel: void | number) {
     const current = root.current;
     const alternate = current.alternate;
 
@@ -2760,9 +2728,10 @@ export function attach(
 
     if (isProfiling && isProfilingSupported) {
       if (!shouldBailoutWithPendingOperations()) {
-        const commitProfilingMetadata = ((rootToCommitProfilingMetadataMap: any): CommitProfilingMetadataMap).get(
-          currentRootID,
-        );
+        const commitProfilingMetadata =
+          ((rootToCommitProfilingMetadataMap: any): CommitProfilingMetadataMap).get(
+            currentRootID,
+          );
 
         if (commitProfilingMetadata != null) {
           commitProfilingMetadata.push(
@@ -2846,18 +2815,18 @@ export function attach(
     }
   }
 
-  function getDisplayNameForFiberID(id) {
+  function getDisplayNameForFiberID(id: number) {
     const fiber = idToArbitraryFiberMap.get(id);
     return fiber != null ? getDisplayNameForFiber(((fiber: any): Fiber)) : null;
   }
 
-  function getFiberForNative(hostInstance) {
+  function getFiberForNative(hostInstance: NativeType) {
     return renderer.findFiberByHostInstance(hostInstance);
   }
 
   function getFiberIDForNative(
-    hostInstance,
-    findNearestUnfilteredAncestor = false,
+    hostInstance: NativeType,
+    findNearestUnfilteredAncestor: boolean = false,
   ) {
     let fiber = renderer.findFiberByHostInstance(hostInstance);
     if (fiber != null) {
@@ -2873,7 +2842,7 @@ export function attach(
 
   // This function is copied from React and should be kept in sync:
   // https://github.com/facebook/react/blob/main/packages/react-reconciler/src/ReactFiberTreeReflection.js
-  function assertIsMounted(fiber) {
+  function assertIsMounted(fiber: Fiber) {
     if (getNearestMountedFiber(fiber) !== fiber) {
       throw new Error('Unable to find node on an unmounted component.');
     }
@@ -3293,7 +3262,7 @@ export function attach(
 
     let owners = null;
     if (_debugOwner) {
-      owners = [];
+      owners = ([]: Array<SerializedElement>);
       let owner: null | Fiber = _debugOwner;
       while (owner !== null) {
         owners.push(fiberToSerializedElement(owner));
@@ -3306,12 +3275,13 @@ export function attach(
 
     let hooks = null;
     if (usesHooks) {
-      const originalConsoleMethods = {};
+      const originalConsoleMethods: {[string]: $FlowFixMe} = {};
 
       // Temporarily disable all console logging before re-running the hook.
       for (const method in console) {
         try {
           originalConsoleMethods[method] = console[method];
+          // $FlowFixMe[prop-missing]
           console[method] = () => {};
         } catch (error) {}
       }
@@ -3326,6 +3296,7 @@ export function attach(
         // Restore original console functionality.
         for (const method in originalConsoleMethods) {
           try {
+            // $FlowFixMe[prop-missing]
             console[method] = originalConsoleMethods[method];
           } catch (error) {}
         }
@@ -3753,7 +3724,7 @@ export function attach(
     };
   }
 
-  function logElementToConsole(id) {
+  function logElementToConsole(id: number) {
     const result = isMostRecentlyInspectedElementCurrent(id)
       ? mostRecentlyInspectedElement
       : inspectElementRaw(id);
@@ -4003,7 +3974,8 @@ export function attach(
   let isProfiling: boolean = false;
   let profilingStartTime: number = 0;
   let recordChangeDescriptions: boolean = false;
-  let rootToCommitProfilingMetadataMap: CommitProfilingMetadataMap | null = null;
+  let rootToCommitProfilingMetadataMap: CommitProfilingMetadataMap | null =
+    null;
 
   function getProfilingData(): ProfilingDataBackend {
     const dataForRoots: Array<ProfilingDataForRootBackend> = [];
@@ -4178,9 +4150,9 @@ export function attach(
 
   // Map of id and its force error status: true (error), false (toggled off),
   // null (do nothing)
-  const forceErrorForFiberIDs = new Map();
+  const forceErrorForFiberIDs = new Map<number | null, $FlowFixMe>();
 
-  function shouldErrorFiberAccordingToMap(fiber) {
+  function shouldErrorFiberAccordingToMap(fiber: any) {
     if (typeof setErrorHandler !== 'function') {
       throw new Error(
         'Expected overrideError() to not get called for earlier React versions.',
@@ -4216,7 +4188,7 @@ export function attach(
     return status;
   }
 
-  function overrideError(id, forceError) {
+  function overrideError(id: number, forceError: boolean) {
     if (
       typeof setErrorHandler !== 'function' ||
       typeof scheduleUpdate !== 'function'
@@ -4243,14 +4215,14 @@ export function attach(
     return false;
   }
 
-  const forceFallbackForSuspenseIDs = new Set();
+  const forceFallbackForSuspenseIDs = new Set<number>();
 
-  function shouldSuspendFiberAccordingToSet(fiber) {
+  function shouldSuspendFiberAccordingToSet(fiber: any) {
     const maybeID = getFiberIDUnsafe(((fiber: any): Fiber));
     return maybeID !== null && forceFallbackForSuspenseIDs.has(maybeID);
   }
 
-  function overrideSuspense(id, forceFallback) {
+  function overrideSuspense(id: number, forceFallback: boolean) {
     if (
       typeof setSuspenseHandler !== 'function' ||
       typeof scheduleUpdate !== 'function'
@@ -4348,7 +4320,9 @@ export function attach(
     return true;
   }
 
-  function updateTrackedPathStateAfterMount(mightSiblingsBeOnTrackedPath) {
+  function updateTrackedPathStateAfterMount(
+    mightSiblingsBeOnTrackedPath: boolean,
+  ) {
     // updateTrackedPathStateBeforeMount() told us whether to match siblings.
     // Now that we're entering siblings, let's use that information.
     mightBeOnTrackedPath = mightSiblingsBeOnTrackedPath;

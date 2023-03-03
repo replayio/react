@@ -25,13 +25,9 @@ describe('ReactIncrementalScheduling', () => {
     act = require('jest-react').act;
   });
 
-  function span(prop) {
-    return {type: 'span', children: [], prop, hidden: false};
-  }
-
   it('schedules and flushes deferred work', () => {
     ReactNoop.render(<span prop="1" />);
-    expect(ReactNoop.getChildren()).toEqual([]);
+    expect(ReactNoop).toMatchRenderedOutput(null);
 
     expect(Scheduler).toFlushWithoutYielding();
     expect(ReactNoop).toMatchRenderedOutput(<span prop="1" />);
@@ -44,9 +40,9 @@ describe('ReactIncrementalScheduling', () => {
 
     expect(Scheduler).toFlushWithoutYielding();
 
-    expect(ReactNoop.getChildren('a')).toEqual([span('a:1')]);
-    expect(ReactNoop.getChildren('b')).toEqual([span('b:1')]);
-    expect(ReactNoop.getChildren('c')).toEqual([span('c:1')]);
+    expect(ReactNoop.getChildrenAsJSX('a')).toEqual(<span prop="a:1" />);
+    expect(ReactNoop.getChildrenAsJSX('b')).toEqual(<span prop="b:1" />);
+    expect(ReactNoop.getChildrenAsJSX('c')).toEqual(<span prop="c:1" />);
   });
 
   it('schedules top-level updates in order of priority', () => {
@@ -109,15 +105,10 @@ describe('ReactIncrementalScheduling', () => {
 
     // Schedule deferred work in the reverse order
     act(() => {
-      if (gate(flags => flags.enableSyncDefaultUpdates)) {
-        React.startTransition(() => {
-          ReactNoop.renderToRootWithID(<Text text="c:2" />, 'c');
-          ReactNoop.renderToRootWithID(<Text text="b:2" />, 'b');
-        });
-      } else {
+      React.startTransition(() => {
         ReactNoop.renderToRootWithID(<Text text="c:2" />, 'c');
         ReactNoop.renderToRootWithID(<Text text="b:2" />, 'b');
-      }
+      });
       // Ensure it starts in the order it was scheduled
       expect(Scheduler).toFlushAndYieldThrough(['c:2']);
 
@@ -126,13 +117,9 @@ describe('ReactIncrementalScheduling', () => {
       expect(ReactNoop.getChildrenAsJSX('c')).toEqual('c:2');
       // Schedule last bit of work, it will get processed the last
 
-      if (gate(flags => flags.enableSyncDefaultUpdates)) {
-        React.startTransition(() => {
-          ReactNoop.renderToRootWithID(<Text text="a:2" />, 'a');
-        });
-      } else {
+      React.startTransition(() => {
         ReactNoop.renderToRootWithID(<Text text="a:2" />, 'a');
-      }
+      });
 
       // Keep performing work in the order it was scheduled
       expect(Scheduler).toFlushAndYieldThrough(['b:2']);
@@ -185,13 +172,9 @@ describe('ReactIncrementalScheduling', () => {
       }
     }
 
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        ReactNoop.render(<Foo />);
-      });
-    } else {
+    React.startTransition(() => {
       ReactNoop.render(<Foo />);
-    }
+    });
     // Render without committing
     expect(Scheduler).toFlushAndYieldThrough(['render: 0']);
 
@@ -205,13 +188,9 @@ describe('ReactIncrementalScheduling', () => {
       'componentDidUpdate: 1',
     ]);
 
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        instance.setState({tick: 2});
-      });
-    } else {
+    React.startTransition(() => {
       instance.setState({tick: 2});
-    }
+    });
     expect(Scheduler).toFlushAndYieldThrough(['render: 2']);
     expect(ReactNoop.flushNextYield()).toEqual([
       'componentDidUpdate: 2',
@@ -314,13 +293,9 @@ describe('ReactIncrementalScheduling', () => {
         return <span prop={this.state.step} />;
       }
     }
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        ReactNoop.render(<Foo />);
-      });
-    } else {
+    React.startTransition(() => {
       ReactNoop.render(<Foo />);
-    }
+    });
 
     // This should be just enough to complete all the work, but not enough to
     // commit it.

@@ -11,9 +11,9 @@ import type {JSONValue, ResponseBase} from 'react-client/src/ReactFlightClient';
 
 import type {JSResourceReference} from 'JSResourceReference';
 
-import type {ModuleMetaData} from 'ReactFlightNativeRelayClientIntegration';
+import type {ClientReferenceMetadata} from 'ReactFlightNativeRelayClientIntegration';
 
-export type ModuleReference<T> = JSResourceReference<T>;
+export type ClientReference<T> = JSResourceReference<T>;
 
 import {
   parseModelString,
@@ -25,11 +25,11 @@ export {
   requireModule,
 } from 'ReactFlightNativeRelayClientIntegration';
 
-import {resolveModuleReference as resolveModuleReferenceImpl} from 'ReactFlightNativeRelayClientIntegration';
+import {resolveClientReference as resolveClientReferenceImpl} from 'ReactFlightNativeRelayClientIntegration';
 
 import isArray from 'shared/isArray';
 
-export type {ModuleMetaData} from 'ReactFlightNativeRelayClientIntegration';
+export type {ClientReferenceMetadata} from 'ReactFlightNativeRelayClientIntegration';
 
 export type BundlerConfig = null;
 
@@ -37,20 +37,25 @@ export type UninitializedModel = JSONValue;
 
 export type Response = ResponseBase;
 
-export function resolveModuleReference<T>(
+export function resolveClientReference<T>(
   bundlerConfig: BundlerConfig,
-  moduleData: ModuleMetaData,
-): ModuleReference<T> {
-  return resolveModuleReferenceImpl(moduleData);
+  metadata: ClientReferenceMetadata,
+): ClientReference<T> {
+  return resolveClientReferenceImpl(metadata);
 }
 
-function parseModelRecursively(response: Response, parentObj, key, value) {
+function parseModelRecursively(
+  response: Response,
+  parentObj: {+[key: string]: JSONValue} | $ReadOnlyArray<JSONValue>,
+  key: string,
+  value: JSONValue,
+): $FlowFixMe {
   if (typeof value === 'string') {
     return parseModelString(response, parentObj, key, value);
   }
   if (typeof value === 'object' && value !== null) {
     if (isArray(value)) {
-      const parsedValue = [];
+      const parsedValue: Array<$FlowFixMe> = [];
       for (let i = 0; i < value.length; i++) {
         (parsedValue: any)[i] = parseModelRecursively(
           response,

@@ -10,6 +10,7 @@
 import type {HostComponent} from './ReactNativeTypes';
 import type {ReactPortal, ReactNodeList} from 'shared/ReactTypes';
 import type {ElementRef, Element, ElementType} from 'react';
+import type {FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
 
 import './ReactNativeInjection';
 
@@ -48,11 +49,6 @@ import ReactSharedInternals from 'shared/ReactSharedInternals';
 import getComponentNameFromType from 'shared/getComponentNameFromType';
 
 const ReactCurrentOwner = ReactSharedInternals.ReactCurrentOwner;
-
-const {
-  sendAccessibilityEvent: fabricSendAccessibilityEvent,
-  dispatchCommand: fabricDispatchCommand,
-} = nativeFabricUIManager;
 
 function findHostInstance_DEPRECATED(
   componentOrHandle: any,
@@ -93,15 +89,6 @@ function findHostInstance_DEPRECATED(
     hostInstance = findHostInstance(componentOrHandle);
   }
 
-  if (hostInstance == null) {
-    return hostInstance;
-  }
-  if ((hostInstance: any).canonical) {
-    // Fabric
-    return (hostInstance: any).canonical;
-  }
-  // $FlowFixMe[incompatible-return]
-  // $FlowFixMe[incompatible-exact]
   return hostInstance;
 }
 
@@ -149,10 +136,7 @@ function findNodeHandle(componentOrHandle: any): ?number {
   if (hostInstance == null) {
     return hostInstance;
   }
-  if ((hostInstance: any).canonical) {
-    // Fabric
-    return (hostInstance: any).canonical._nativeTag;
-  }
+
   return hostInstance._nativeTag;
 }
 
@@ -170,7 +154,7 @@ function dispatchCommand(handle: any, command: string, args: Array<any>) {
   if (handle._internalInstanceHandle != null) {
     const {stateNode} = handle._internalInstanceHandle;
     if (stateNode != null) {
-      fabricDispatchCommand(stateNode.node, command, args);
+      nativeFabricUIManager.dispatchCommand(stateNode.node, command, args);
     }
   } else {
     UIManager.dispatchViewManagerCommand(handle._nativeTag, command, args);
@@ -191,13 +175,14 @@ function sendAccessibilityEvent(handle: any, eventType: string) {
   if (handle._internalInstanceHandle != null) {
     const {stateNode} = handle._internalInstanceHandle;
     if (stateNode != null) {
-      fabricSendAccessibilityEvent(stateNode.node, eventType);
+      nativeFabricUIManager.sendAccessibilityEvent(stateNode.node, eventType);
     }
   } else {
     legacySendAccessibilityEvent(handle._nativeTag, eventType);
   }
 }
 
+// $FlowFixMe[missing-local-annot]
 function onRecoverableError(error) {
   // TODO: Expose onRecoverableError option to userspace
   // eslint-disable-next-line react-internal/no-production-logging, react-internal/warning-args
@@ -267,7 +252,7 @@ function computeComponentStackForErrorReporting(reactTag: number): string {
   return getStackByFiberInDevAndProd(fiber);
 }
 
-const roots = new Map();
+const roots = new Map<number, FiberRoot>();
 
 const Internals = {
   computeComponentStackForErrorReporting,

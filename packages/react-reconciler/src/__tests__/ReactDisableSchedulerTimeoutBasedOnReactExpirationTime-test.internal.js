@@ -5,6 +5,7 @@ let Scheduler;
 let Suspense;
 let scheduleCallback;
 let NormalPriority;
+let waitForAll;
 
 describe('ReactSuspenseList', () => {
   beforeEach(() => {
@@ -20,6 +21,9 @@ describe('ReactSuspenseList', () => {
 
     scheduleCallback = Scheduler.unstable_scheduleCallback;
     NormalPriority = Scheduler.unstable_NormalPriority;
+
+    const InternalTestUtils = require('internal-test-utils');
+    waitForAll = InternalTestUtils.waitForAll;
   });
 
   function Text(props) {
@@ -29,7 +33,7 @@ describe('ReactSuspenseList', () => {
 
   function createAsyncText(text) {
     let resolved = false;
-    const Component = function() {
+    const Component = function () {
       if (!resolved) {
         Scheduler.unstable_yieldValue('Suspend! [' + text + ']');
         throw promise;
@@ -37,7 +41,7 @@ describe('ReactSuspenseList', () => {
       return <Text text={text} />;
     };
     const promise = new Promise(resolve => {
-      Component.resolve = function() {
+      Component.resolve = function () {
         resolved = true;
         return resolve();
       };
@@ -61,20 +65,12 @@ describe('ReactSuspenseList', () => {
     const root = ReactNoop.createRoot(null);
 
     root.render(<App show={false} />);
-    expect(Scheduler).toFlushAndYield([]);
+    await waitForAll([]);
 
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        root.render(<App show={true} />);
-      });
-    } else {
+    React.startTransition(() => {
       root.render(<App show={true} />);
-    }
-    expect(Scheduler).toFlushAndYield([
-      'Suspend! [A]',
-      'Suspend! [B]',
-      'Loading...',
-    ]);
+    });
+    await waitForAll(['Suspend! [A]', 'Suspend! [B]', 'Loading...']);
     expect(root).toMatchRenderedOutput(null);
 
     Scheduler.unstable_advanceTime(2000);
@@ -96,7 +92,7 @@ describe('ReactSuspenseList', () => {
     // task should not jump the queue ahead of B.
     await expect(Scheduler).toFlushAndYieldThrough(['Resolve B']);
 
-    expect(Scheduler).toFlushAndYield(['A', 'B']);
+    await waitForAll(['A', 'B']);
     expect(root).toMatchRenderedOutput('AB');
   });
 });

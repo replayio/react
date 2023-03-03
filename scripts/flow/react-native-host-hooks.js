@@ -143,18 +143,6 @@ declare module 'react-native/Libraries/ReactPrivate/ReactNativePrivateInterface'
     emit: (channel: string, event: RawEventEmitterEvent) => string,
     ...
   };
-  declare export class CustomEvent {
-    isTrusted: boolean;
-
-    constructor(
-      name: string,
-      {
-        detail: any,
-      },
-    ): void;
-
-    setSyntheticEvent(event: any): void;
-  }
 }
 
 declare module 'react-native/Libraries/ReactPrivate/ReactNativePrivateInitializeCore' {
@@ -201,6 +189,14 @@ declare var nativeFabricUIManager: {
     onFail: () => void,
     onSuccess: __MeasureLayoutOnSuccessCallback,
   ) => void,
+  getBoundingClientRect: (
+    node: Node,
+  ) => [
+    /* x:*/ number,
+    /* y:*/ number,
+    /* width:*/ number,
+    /* height:*/ number,
+  ],
   findNodeAtPoint: (
     node: Node,
     locationX: number,

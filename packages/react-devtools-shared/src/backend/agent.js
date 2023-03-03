@@ -30,7 +30,7 @@ import type {ComponentFilter} from '../types';
 import {isSynchronousXHRSupported} from './utils';
 import type {BrowserTheme} from 'react-devtools-shared/src/devtools/views/DevTools';
 
-const debug = (methodName, ...args) => {
+const debug = (methodName: string, ...args: Array<string>) => {
   if (__DEBUG__) {
     console.log(
       `%cAgent %c${methodName}`,
@@ -136,6 +136,8 @@ export default class Agent extends EventEmitter<{
   stopInspectingNative: [],
   shutdown: [],
   traceUpdates: [Set<NativeType>],
+  drawTraceUpdates: [Array<NativeType>],
+  disableTraceUpdates: [],
 }> {
   _bridge: BackendBridge;
   _isProfiling: boolean = false;
@@ -551,6 +553,14 @@ export default class Agent extends EventEmitter<{
     }
   };
 
+  reloadAndProfile: (recordChangeDescriptions: boolean) => void =
+    recordChangeDescriptions => {
+      // This code path should only be hit if the shell has explicitly told the Store that it supports profiling.
+      // In that case, the shell must also listen for this specific message to know when it needs to reload the app.
+      // The agent can't do this in a way that is renderer agnostic.
+      this._bridge.send('reloadAppForProfiling');
+    };
+
   renamePath: RenamePathParams => void = ({
     hookID,
     id,
@@ -595,20 +605,19 @@ export default class Agent extends EventEmitter<{
     }
   }
 
-  setTraceUpdatesEnabled: (
-    traceUpdatesEnabled: boolean,
-  ) => void = traceUpdatesEnabled => {
-    this._traceUpdatesEnabled = traceUpdatesEnabled;
+  setTraceUpdatesEnabled: (traceUpdatesEnabled: boolean) => void =
+    traceUpdatesEnabled => {
+      this._traceUpdatesEnabled = traceUpdatesEnabled;
 
-    setTraceUpdatesEnabled(traceUpdatesEnabled);
+      setTraceUpdatesEnabled(traceUpdatesEnabled);
 
-    for (const rendererID in this._rendererInterfaces) {
-      const renderer = ((this._rendererInterfaces[
-        (rendererID: any)
-      ]: any): RendererInterface);
-      renderer.setTraceUpdatesEnabled(traceUpdatesEnabled);
-    }
-  };
+      for (const rendererID in this._rendererInterfaces) {
+        const renderer = ((this._rendererInterfaces[
+          (rendererID: any)
+        ]: any): RendererInterface);
+        renderer.setTraceUpdatesEnabled(traceUpdatesEnabled);
+      }
+    };
 
   syncSelectionFromNativeElementsPanel: () => void = () => {
     const target = window.__REACT_DEVTOOLS_GLOBAL_HOOK__.$0;
@@ -623,19 +632,18 @@ export default class Agent extends EventEmitter<{
     this.emit('shutdown');
   };
 
-  startProfiling: (
-    recordChangeDescriptions: boolean,
-  ) => void = recordChangeDescriptions => {
-    this._recordChangeDescriptions = recordChangeDescriptions;
-    this._isProfiling = true;
-    for (const rendererID in this._rendererInterfaces) {
-      const renderer = ((this._rendererInterfaces[
-        (rendererID: any)
-      ]: any): RendererInterface);
-      renderer.startProfiling(recordChangeDescriptions);
-    }
-    this._bridge.send('profilingStatus', this._isProfiling);
-  };
+  startProfiling: (recordChangeDescriptions: boolean) => void =
+    recordChangeDescriptions => {
+      this._recordChangeDescriptions = recordChangeDescriptions;
+      this._isProfiling = true;
+      for (const rendererID in this._rendererInterfaces) {
+        const renderer = ((this._rendererInterfaces[
+          (rendererID: any)
+        ]: any): RendererInterface);
+        renderer.startProfiling(recordChangeDescriptions);
+      }
+      this._bridge.send('profilingStatus', this._isProfiling);
+    };
 
   stopProfiling: () => void = () => {
     this._isProfiling = false;
@@ -693,16 +701,15 @@ export default class Agent extends EventEmitter<{
     });
   };
 
-  updateComponentFilters: (
-    componentFilters: Array<ComponentFilter>,
-  ) => void = componentFilters => {
-    for (const rendererID in this._rendererInterfaces) {
-      const renderer = ((this._rendererInterfaces[
-        (rendererID: any)
-      ]: any): RendererInterface);
-      renderer.updateComponentFilters(componentFilters);
-    }
-  };
+  updateComponentFilters: (componentFilters: Array<ComponentFilter>) => void =
+    componentFilters => {
+      for (const rendererID in this._rendererInterfaces) {
+        const renderer = ((this._rendererInterfaces[
+          (rendererID: any)
+        ]: any): RendererInterface);
+        renderer.updateComponentFilters(componentFilters);
+      }
+    };
 
   viewAttributeSource: CopyElementParams => void = ({id, path, rendererID}) => {
     const renderer = this._rendererInterfaces[rendererID];

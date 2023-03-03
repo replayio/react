@@ -12,7 +12,7 @@ import {
   completeBoundaryWithStyles,
   completeBoundary,
   completeSegment,
-} from './fizz-instruction-set/ReactDOMFizzInstructionSet';
+} from './fizz-instruction-set/ReactDOMFizzInstructionSetExternalRuntime';
 
 if (!window.$RC) {
   // TODO: Eventually remove, we currently need to set these globals for
@@ -27,6 +27,7 @@ if (document.readyState === 'loading') {
   } else {
     // body may not exist yet if the fizz runtime is sent in <head>
     // (e.g. as a preinit resource)
+    // $FlowFixMe[recursive-definition]
     const domBodyObserver = new MutationObserver(() => {
       // We expect the body node to be stable once parsed / created
       if (document.body) {
@@ -34,6 +35,8 @@ if (document.readyState === 'loading') {
           installFizzInstrObserver(document.body);
         }
         handleExistingNodes();
+        // We can call disconnect without takeRecord here,
+        // since we only expect a single document.body
         domBodyObserver.disconnect();
       }
     });
@@ -53,7 +56,7 @@ function handleExistingNodes() {
 }
 
 function installFizzInstrObserver(target /*: Node */) {
-  const fizzInstrObserver = new MutationObserver(mutations => {
+  const handleMutations = (mutations /*: Array<MutationRecord> */) => {
     for (let i = 0; i < mutations.length; i++) {
       const addedNodes = mutations[i].addedNodes;
       for (let j = 0; j < addedNodes.length; j++) {
@@ -62,24 +65,27 @@ function installFizzInstrObserver(target /*: Node */) {
         }
       }
     }
-  });
+  };
+
+  const fizzInstrObserver = new MutationObserver(handleMutations);
   // We assume that instruction data nodes are eventually appended to the
   // body, even if Fizz is streaming to a shell / subtree.
   fizzInstrObserver.observe(target, {
     childList: true,
   });
   window.addEventListener('DOMContentLoaded', () => {
+    handleMutations(fizzInstrObserver.takeRecords());
     fizzInstrObserver.disconnect();
   });
 }
 
 function handleNode(node_ /*: Node */) {
   // $FlowFixMe[incompatible-cast]
-  if (node_.nodeType !== 1 || !(node_ /*: HTMLElement*/).dataset) {
+  if (node_.nodeType !== 1 || !(node_ /*: HTMLElement */).dataset) {
     return;
   }
   // $FlowFixMe[incompatible-cast]
-  const node = (node_ /*: HTMLElement*/);
+  const node = (node_ /*: HTMLElement */);
   const dataset = node.dataset;
   if (dataset['rxi'] != null) {
     clientRenderBoundary(
