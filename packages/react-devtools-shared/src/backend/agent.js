@@ -9,10 +9,6 @@
 
 import EventEmitter from '../events';
 import {__DEBUG__} from '../constants';
-import {
-  initialize as setupTraceUpdates,
-  toggleEnabled as setTraceUpdatesEnabled,
-} from './views/TraceUpdates';
 import {patch as patchConsole, type ConsolePatchSettings} from './console';
 import {currentBridgeProtocol} from 'react-devtools-shared/src/bridge';
 
@@ -211,8 +207,6 @@ export default class Agent extends EventEmitter<{
 
     bridge.send('isBackendStorageAPISupported', isBackendStorageAPISupported);
     bridge.send('isSynchronousXHRSupported', isSynchronousXHRSupported());
-
-    setupTraceUpdates(this);
 
     window.__RECORD_REPLAY_REACT_DEVTOOLS_SEND_MESSAGE__ = (
       inEvent,
@@ -607,9 +601,8 @@ export default class Agent extends EventEmitter<{
 
   setTraceUpdatesEnabled: (traceUpdatesEnabled: boolean) => void =
     traceUpdatesEnabled => {
+      traceUpdatesEnabled = false;
       this._traceUpdatesEnabled = traceUpdatesEnabled;
-
-      setTraceUpdatesEnabled(traceUpdatesEnabled);
 
       for (const rendererID in this._rendererInterfaces) {
         const renderer = ((this._rendererInterfaces[
