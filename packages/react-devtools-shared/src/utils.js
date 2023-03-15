@@ -110,9 +110,15 @@ export function getWrappedDisplayName(
   fallbackName?: string,
 ): string {
   const displayName = (outerType: any).displayName;
-  return (
-    displayName || `${wrapperName}(${getDisplayName(innerType, fallbackName)})`
-  );
+
+  let finalDisplayName = displayName;
+
+  if (!finalDisplayName) {
+    const innerDisplayName = getDisplayName(innerType, fallbackName);
+    finalDisplayName = `${wrapperName}(${innerDisplayName})`;
+  }
+
+  return finalDisplayName;
 }
 
 export function getDisplayName(
@@ -136,6 +142,7 @@ export function getDisplayName(
   }
 
   cachedDisplayNames.set(type, displayName);
+  window.allReactComponentDisplayNames.set(type, displayName);
   return displayName;
 }
 
