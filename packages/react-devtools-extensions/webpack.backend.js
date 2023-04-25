@@ -36,7 +36,7 @@ const featureFlagTarget = process.env.FEATURE_FLAG_TARGET || 'extension-oss';
 
 module.exports = {
   mode: __DEV__ ? 'development' : 'production',
-  devtool: __DEV__ ? 'cheap-module-source-map' : false,
+  devtool: __DEV__ ? 'cheap-module-source-map' : 'source-map',
   entry: {
     backend: './src/backend.js',
   },
@@ -63,7 +63,7 @@ module.exports = {
     },
   },
   optimization: {
-    minimize: false,
+    minimize: true,
   },
   plugins: [
     new DefinePlugin({
