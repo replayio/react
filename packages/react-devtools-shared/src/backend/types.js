@@ -7,6 +7,13 @@
  * @flow
  */
 
+/**
+ * WARNING:
+ * This file contains types that are conceptually related to React internals and
+ * DevTools backends, but can be passed to frontend via the bridge.
+ * Be mindful of backwards compatibility when making changes.
+ */
+
 import type {ReactContext, Wakeable} from 'shared/ReactTypes';
 import type {Source} from 'shared/ReactElementType';
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
@@ -15,8 +22,15 @@ import type {
   ElementType,
   Plugins,
 } from 'react-devtools-shared/src/types';
-import type {ResolveNativeStyle} from 'react-devtools-shared/src/backend/NativeStyleEditor/setupNativeStyleEditor';
+import type {
+  ResolveNativeStyle,
+  SetupNativeStyleEditor,
+} from 'react-devtools-shared/src/backend/NativeStyleEditor/setupNativeStyleEditor';
+import type {InitBackend} from 'react-devtools-shared/src/backend';
 import type {TimelineDataExport} from 'react-devtools-timeline/src/types';
+import type {BrowserTheme} from 'react-devtools-shared/src/types';
+import type {BackendBridge} from 'react-devtools-shared/src/bridge';
+import type Agent from './agent';
 
 type BundleType =
   | 0 // PROD
@@ -157,6 +171,8 @@ export type ReactRenderer = {
   // 18.0+
   injectProfilingHooks?: (profilingHooks: DevToolsProfilingHooks) => void,
   getLaneLabelMap?: () => Map<Lane, string> | null,
+  // set by backend after successful attaching
+  attached?: boolean,
   ...
 };
 
@@ -342,7 +358,6 @@ export type RendererInterface = {
   clearErrorsAndWarnings: () => void,
   clearErrorsForFiberID: (id: number) => void,
   clearWarningsForFiberID: (id: number) => void,
-  copyElementPath: (id: number, path: Array<string | number>) => void,
   deletePath: (
     type: Type,
     id: number,
@@ -359,6 +374,10 @@ export type RendererInterface = {
   getProfilingData(): ProfilingDataBackend,
   getOwnersList: (id: number) => Array<SerializedElement> | null,
   getPathForElement: (id: number) => Array<PathFrame> | null,
+  getSerializedElementValueByPath: (
+    id: number,
+    path: Array<string | number>,
+  ) => ?string,
   handleCommitFiberRoot: (fiber: Object, commitPriority?: number) => void,
   handleCommitFiberUnmount: (fiber: Object) => void,
   handlePostCommitFiberRoot: (fiber: Object) => void,
@@ -453,10 +472,18 @@ export type DevToolsProfilingHooks = {
   markComponentPassiveEffectUnmountStopped: () => void,
 };
 
+export type DevToolsBackend = {
+  Agent: Class<Agent>,
+  Bridge: Class<BackendBridge>,
+  initBackend: InitBackend,
+  setupNativeStyleEditor?: SetupNativeStyleEditor,
+};
+
 export type DevToolsHook = {
   listeners: {[key: string]: Array<Handler>, ...},
   rendererInterfaces: Map<RendererID, RendererInterface>,
   renderers: Map<RendererID, ReactRenderer>,
+  backends: Map<string, DevToolsBackend>,
 
   emit: (event: string, data: any) => void,
   getFiberRoots: (rendererID: RendererID) => Set<Object>,
@@ -491,4 +518,12 @@ export type DevToolsHook = {
   dangerous_setTargetConsoleForTesting?: (fakeConsole: Object) => void,
 
   ...
+};
+
+export type ConsolePatchSettings = {
+  appendComponentStack: boolean,
+  breakOnConsoleErrors: boolean,
+  showInlineWarningsAndErrors: boolean,
+  hideConsoleLogsInStrictMode: boolean,
+  browserTheme: BrowserTheme,
 };

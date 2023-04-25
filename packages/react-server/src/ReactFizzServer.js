@@ -18,6 +18,7 @@ import type {
   ReactProviderType,
   OffscreenMode,
   Wakeable,
+  Thenable,
 } from 'shared/ReactTypes';
 import type {LazyComponent as LazyComponentType} from 'react/src/ReactLazy';
 import type {
@@ -26,7 +27,7 @@ import type {
   FormatContext,
   Resources,
   BoundaryResources,
-} from './ReactServerFormatConfig';
+} from './ReactFizzConfig';
 import type {ContextSnapshot} from './ReactFizzNewContext';
 import type {ComponentStackNode} from './ReactFizzComponentStack';
 import type {TreeContext} from './ReactFizzTreeContext';
@@ -70,13 +71,13 @@ import {
   writeHoistables,
   writePostamble,
   hoistResources,
-  hoistResourcesToRoot,
-  prepareToRender,
-  cleanupAfterRender,
   setCurrentlyRenderingBoundaryResourcesTarget,
   createResources,
   createBoundaryResources,
-} from './ReactServerFormatConfig';
+  prepareHostDispatcher,
+  supportsRequestStorage,
+  requestStorage,
+} from './ReactFizzConfig';
 import {
   constructClassInstance,
   mountClassInstance,
@@ -103,6 +104,7 @@ import {
   currentResponseState,
   setCurrentResponseState,
   getThenableStateAfterSuspending,
+  unwrapThenable,
 } from './ReactFizzHooks';
 import {DefaultCacheDispatcher} from './ReactFizzCache';
 import {getStackByComponentStackNode} from './ReactFizzComponentStack';
@@ -124,6 +126,7 @@ import {
   REACT_MEMO_TYPE,
   REACT_PROVIDER_TYPE,
   REACT_CONTEXT_TYPE,
+  REACT_SERVER_CONTEXT_TYPE,
   REACT_SCOPE_TYPE,
   REACT_OFFSCREEN_TYPE,
 } from 'shared/ReactSymbols';
@@ -208,6 +211,7 @@ const CLOSED = 2;
 
 export opaque type Request = {
   destination: null | Destination,
+  flushScheduled: boolean,
   +responseState: ResponseState,
   +progressiveChunkSize: number,
   status: 0 | 1 | 2,
@@ -275,11 +279,13 @@ export function createRequest(
   onShellError: void | ((error: mixed) => void),
   onFatalError: void | ((error: mixed) => void),
 ): Request {
+  prepareHostDispatcher();
   const pingedTasks: Array<Task> = [];
   const abortSet: Set<Task> = new Set();
   const resources: Resources = createResources();
   const request: Request = {
     destination: null,
+    flushScheduled: false,
     responseState,
     progressiveChunkSize:
       progressiveChunkSize === undefined
@@ -330,10 +336,22 @@ export function createRequest(
   return request;
 }
 
+let currentRequest: null | Request = null;
+
+export function resolveRequest(): null | Request {
+  if (currentRequest) return currentRequest;
+  if (supportsRequestStorage) {
+    const store = requestStorage.getStore();
+    if (store) return store;
+  }
+  return null;
+}
+
 function pingTask(request: Request, task: Task): void {
   const pingedTasks = request.pingedTasks;
   pingedTasks.push(task);
-  if (pingedTasks.length === 1) {
+  if (request.pingedTasks.length === 1) {
+    request.flushScheduled = request.destination !== null;
     scheduleWork(() => performWork(request));
   }
 }
@@ -594,11 +612,6 @@ function renderSuspenseBoundary(
       contentRootSegment.textEmbedded,
     );
     contentRootSegment.status = COMPLETED;
-    if (enableFloat) {
-      if (newBoundary.pendingTasks === 0) {
-        hoistCompletedBoundaryResources(request, newBoundary);
-      }
-    }
     queueCompletedSegment(newBoundary, contentRootSegment);
     if (newBoundary.pendingTasks === 0) {
       // This must have been the last segment we were waiting on. This boundary is now complete.
@@ -650,19 +663,6 @@ function renderSuspenseBoundary(
   request.pingedTasks.push(suspendedFallbackTask);
 
   popComponentStackInDEV(task);
-}
-
-function hoistCompletedBoundaryResources(
-  request: Request,
-  completedBoundary: SuspenseBoundary,
-): void {
-  if (request.completedRootSegment !== null || request.pendingRootTasks > 0) {
-    // The Shell has not flushed yet. we can hoist Resources for this boundary
-    // all the way to the Root.
-    hoistResourcesToRoot(request.resources, completedBoundary.resources);
-  }
-  // We don't hoist if the root already flushed because late resources will be hoisted
-  // as boundaries flush
 }
 
 function renderBackupSuspenseBoundary(
@@ -1240,7 +1240,6 @@ function renderElement(
       }
       throw new Error('ReactDOMServer does not yet support scope components.');
     }
-    // eslint-disable-next-line-no-fallthrough
     case REACT_SUSPENSE_TYPE: {
       if (
         enableSuspenseAvoidThisFallbackFizz &&
@@ -1308,7 +1307,6 @@ function validateIterable(iterable, iteratorFn: Function): void {
     // See https://github.com/facebook/react/issues/12995
     if (
       typeof Symbol === 'function' &&
-      // $FlowFixMe Flow doesn't know about toStringTag
       iterable[Symbol.toStringTag] === 'Generator'
     ) {
       if (!didWarnAboutGenerators) {
@@ -1396,7 +1394,6 @@ function renderNodeDestructiveImpl(
           'Portals are not currently supported by the server renderer. ' +
             'Render them conditionally so that they only appear on the client render.',
         );
-      // eslint-disable-next-line-no-fallthrough
       case REACT_LAZY_TYPE: {
         const lazyNode: LazyComponentType<any, any> = (node: any);
         const payload = lazyNode._payload;
@@ -1457,6 +1454,39 @@ function renderNodeDestructiveImpl(
         }
         return;
       }
+    }
+
+    // Usables are a valid React node type. When React encounters a Usable in
+    // a child position, it unwraps it using the same algorithm as `use`. For
+    // example, for promises, React will throw an exception to unwind the
+    // stack, then replay the component once the promise resolves.
+    //
+    // A difference from `use` is that React will keep unwrapping the value
+    // until it reaches a non-Usable type.
+    //
+    // e.g. Usable<Usable<Usable<T>>> should resolve to T
+    const maybeUsable: Object = node;
+    if (typeof maybeUsable.then === 'function') {
+      const thenable: Thenable<ReactNodeList> = (maybeUsable: any);
+      return renderNodeDestructiveImpl(
+        request,
+        task,
+        null,
+        unwrapThenable(thenable),
+      );
+    }
+
+    if (
+      maybeUsable.$$typeof === REACT_CONTEXT_TYPE ||
+      maybeUsable.$$typeof === REACT_SERVER_CONTEXT_TYPE
+    ) {
+      const context: ReactContext<ReactNodeList> = (maybeUsable: any);
+      return renderNodeDestructiveImpl(
+        request,
+        task,
+        null,
+        readContext(context),
+      );
     }
 
     // $FlowFixMe[method-unbinding]
@@ -1802,9 +1832,6 @@ function finishedTask(
           queueCompletedSegment(boundary, segment);
         }
       }
-      if (enableFloat) {
-        hoistCompletedBoundaryResources(request, boundary);
-      }
       if (boundary.parentFlushed) {
         // The segment might be part of a segment that didn't flush yet, but if the boundary's
         // parent flushed, we need to schedule the boundary to be emitted.
@@ -1936,7 +1963,9 @@ export function performWork(request: Request): void {
     ReactCurrentCache.current = DefaultCacheDispatcher;
   }
 
-  const previousHostDispatcher = prepareToRender(request.resources);
+  const prevRequest = currentRequest;
+  currentRequest = request;
+
   let prevGetCurrentStackImpl;
   if (__DEV__) {
     prevGetCurrentStackImpl = ReactDebugCurrentFrame.getCurrentStack;
@@ -1964,7 +1993,6 @@ export function performWork(request: Request): void {
     if (enableCache) {
       ReactCurrentCache.current = prevCacheDispatcher;
     }
-    cleanupAfterRender(previousHostDispatcher);
 
     if (__DEV__) {
       ReactDebugCurrentFrame.getCurrentStack = prevGetCurrentStackImpl;
@@ -1979,6 +2007,7 @@ export function performWork(request: Request): void {
       // we'll to restore the context to what it was before returning.
       switchContext(prevContext);
     }
+    currentRequest = prevRequest;
   }
 }
 
@@ -2177,7 +2206,11 @@ function flushCompletedBoundary(
   completedSegments.length = 0;
 
   if (enableFloat) {
-    writeResourcesForBoundary(destination, boundary.resources);
+    writeResourcesForBoundary(
+      destination,
+      boundary.resources,
+      request.responseState,
+    );
   }
 
   return writeCompletedBoundaryInstruction(
@@ -2221,7 +2254,11 @@ function flushPartialBoundary(
     // if there is no backpressure. Later before we complete the boundary we
     // will write resources regardless of backpressure before we emit the
     // completion instruction
-    return writeResourcesForBoundary(destination, boundary.resources);
+    return writeResourcesForBoundary(
+      destination,
+      boundary.resources,
+      request.responseState,
+    );
   } else {
     return true;
   }
@@ -2370,6 +2407,7 @@ function flushCompletedQueues(
       // We don't need to check any partially completed segments because
       // either they have pending task or they're complete.
     ) {
+      request.flushScheduled = false;
       if (enableFloat) {
         writePostamble(destination, request.responseState);
       }
@@ -2392,7 +2430,27 @@ function flushCompletedQueues(
 }
 
 export function startWork(request: Request): void {
-  scheduleWork(() => performWork(request));
+  request.flushScheduled = request.destination !== null;
+  if (supportsRequestStorage) {
+    scheduleWork(() => requestStorage.run(request, performWork, request));
+  } else {
+    scheduleWork(() => performWork(request));
+  }
+}
+
+function enqueueFlush(request: Request): void {
+  if (
+    request.flushScheduled === false &&
+    // If there are pinged tasks we are going to flush anyway after work completes
+    request.pingedTasks.length === 0 &&
+    // If there is no destination there is nothing we can flush to. A flush will
+    // happen when we start flowing again
+    request.destination !== null
+  ) {
+    const destination = request.destination;
+    request.flushScheduled = true;
+    scheduleWork(() => flushCompletedQueues(request, destination));
+  }
 }
 
 export function startFlowing(request: Request, destination: Destination): void {
@@ -2436,4 +2494,12 @@ export function abort(request: Request, reason: mixed): void {
     logRecoverableError(request, error);
     fatalError(request, error);
   }
+}
+
+export function flushResources(request: Request): void {
+  enqueueFlush(request);
+}
+
+export function getResources(request: Request): Resources {
+  return request.resources;
 }

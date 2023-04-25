@@ -7,9 +7,10 @@
  * @flow
  */
 
-import type {ReactModel} from 'react-server/src/ReactFlightServer';
-import type {ServerContextJSONValue} from 'shared/ReactTypes';
-import type {BundlerConfig} from './ReactFlightServerWebpackBundlerConfig';
+import type {ReactClientValue} from 'react-server/src/ReactFlightServer';
+import type {ServerContextJSONValue, Thenable} from 'shared/ReactTypes';
+import type {ClientManifest} from './ReactFlightServerConfigWebpackBundler';
+import type {ServerManifest} from 'react-client/src/ReactFlightClientConfig';
 
 import {
   createRequest,
@@ -17,6 +18,12 @@ import {
   startFlowing,
   abort,
 } from 'react-server/src/ReactFlightServer';
+
+import {
+  createResponse,
+  close,
+  getRoot,
+} from 'react-server/src/ReactFlightReplyServer';
 
 type Options = {
   identifierPrefix?: string,
@@ -26,8 +33,8 @@ type Options = {
 };
 
 function renderToReadableStream(
-  model: ReactModel,
-  webpackMap: BundlerConfig,
+  model: ReactClientValue,
+  webpackMap: ClientManifest,
   options?: Options,
 ): ReadableStream {
   const request = createRequest(
@@ -60,10 +67,24 @@ function renderToReadableStream(
       },
       cancel: (reason): ?Promise<void> => {},
     },
-    // $FlowFixMe size() methods are not allowed on byte streams.
+    // $FlowFixMe[prop-missing] size() methods are not allowed on byte streams.
     {highWaterMark: 0},
   );
   return stream;
 }
 
-export {renderToReadableStream};
+function decodeReply<T>(
+  body: string | FormData,
+  webpackMap: ServerManifest,
+): Thenable<T> {
+  if (typeof body === 'string') {
+    const form = new FormData();
+    form.append('0', body);
+    body = form;
+  }
+  const response = createResponse(webpackMap, '', body);
+  close(response);
+  return getRoot(response);
+}
+
+export {renderToReadableStream, decodeReply};

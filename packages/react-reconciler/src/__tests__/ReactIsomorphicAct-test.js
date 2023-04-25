@@ -16,10 +16,14 @@ let use;
 let Suspense;
 let DiscreteEventPriority;
 let startTransition;
+let waitForMicrotasks;
+let Scheduler;
+let assertLog;
 
 describe('isomorphic act()', () => {
   beforeEach(() => {
     React = require('react');
+    Scheduler = require('scheduler');
 
     ReactNoop = require('react-noop-renderer');
     DiscreteEventPriority =
@@ -28,6 +32,9 @@ describe('isomorphic act()', () => {
     use = React.use;
     Suspense = React.Suspense;
     startTransition = React.startTransition;
+
+    waitForMicrotasks = require('internal-test-utils').waitForMicrotasks;
+    assertLog = require('internal-test-utils').assertLog;
   });
 
   beforeEach(() => {
@@ -37,6 +44,11 @@ describe('isomorphic act()', () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
+
+  function Text({text}) {
+    Scheduler.log(text);
+    return text;
+  }
 
   // @gate __DEV__
   test('bypasses queueMicrotask', async () => {
@@ -51,7 +63,7 @@ describe('isomorphic act()', () => {
     // Nothing has rendered yet
     expect(root).toMatchRenderedOutput(null);
     // Flush the microtasks by awaiting
-    await null;
+    await waitForMicrotasks();
     expect(root).toMatchRenderedOutput('A');
 
     // Now do the same thing but wrap the update with `act`. No
@@ -129,24 +141,71 @@ describe('isomorphic act()', () => {
     const root = ReactNoop.createLegacyRoot();
 
     await act(async () => {
-      // These updates are batched. This replicates the behavior of the original
-      // `act` implementation, for compatibility.
-      root.render('A');
-      root.render('B');
-      // Nothing has rendered yet.
-      expect(root).toMatchRenderedOutput(null);
-      await null;
-      // Updates are flushed after the first await.
-      expect(root).toMatchRenderedOutput('B');
+      queueMicrotask(() => {
+        Scheduler.log('Current tree in microtask: ' + root.getChildrenAsJSX());
+        root.render(<Text text="C" />);
+      });
+      root.render(<Text text="A" />);
+      root.render(<Text text="B" />);
 
-      // Subsequent updates in the same scope aren't batched.
-      root.render('C');
-      expect(root).toMatchRenderedOutput('C');
+      await null;
+      assertLog([
+        // A and B should render in a single batch _before_ the microtask queue
+        // has run. This replicates the behavior of the original `act`
+        // implementation, for compatibility.
+        'B',
+        'Current tree in microtask: B',
+
+        // C isn't scheduled until a microtask, so it's rendered separately.
+        'C',
+      ]);
+
+      // Subsequent updates should also render in separate batches.
+      root.render(<Text text="D" />);
+      root.render(<Text text="E" />);
+      assertLog(['D', 'E']);
     });
   });
 
   // @gate __DEV__
-  // @gate enableUseHook
+  test('in legacy mode, in an async scope, updates are batched until the first `await` (regression test: batchedUpdates)', async () => {
+    const root = ReactNoop.createLegacyRoot();
+
+    await act(async () => {
+      queueMicrotask(() => {
+        Scheduler.log('Current tree in microtask: ' + root.getChildrenAsJSX());
+        root.render(<Text text="C" />);
+      });
+
+      // This is a regression test. The presence of `batchedUpdates` would cause
+      // these updates to not flush until a microtask. The correct behavior is
+      // that they flush before the microtask queue, regardless of whether
+      // they are wrapped with `batchedUpdates`.
+      ReactNoop.batchedUpdates(() => {
+        root.render(<Text text="A" />);
+        root.render(<Text text="B" />);
+      });
+
+      await null;
+      assertLog([
+        // A and B should render in a single batch _before_ the microtask queue
+        // has run. This replicates the behavior of the original `act`
+        // implementation, for compatibility.
+        'B',
+        'Current tree in microtask: B',
+
+        // C isn't scheduled until a microtask, so it's rendered separately.
+        'C',
+      ]);
+
+      // Subsequent updates should also render in separate batches.
+      root.render(<Text text="D" />);
+      root.render(<Text text="E" />);
+      assertLog(['D', 'E']);
+    });
+  });
+
+  // @gate __DEV__
   test('unwraps promises by yielding to microtasks (async act scope)', async () => {
     const promise = Promise.resolve('Async');
 
@@ -172,7 +231,6 @@ describe('isomorphic act()', () => {
   });
 
   // @gate __DEV__
-  // @gate enableUseHook
   test('unwraps promises by yielding to microtasks (non-async act scope)', async () => {
     const promise = Promise.resolve('Async');
 
@@ -200,7 +258,6 @@ describe('isomorphic act()', () => {
   });
 
   // @gate __DEV__
-  // @gate enableUseHook
   test('warns if a promise is used in a non-awaited `act` scope', async () => {
     const promise = new Promise(() => {});
 
@@ -229,9 +286,7 @@ describe('isomorphic act()', () => {
     //
     // The exact number of microtasks is an implementation detail; just needs
     // to happen when the microtask queue is flushed.
-    await null;
-    await null;
-    await null;
+    await waitForMicrotasks();
 
     expect(console.error).toHaveBeenCalledTimes(1);
     expect(console.error.mock.calls[0][0]).toContain(
@@ -282,9 +337,7 @@ describe('isomorphic act()', () => {
     //
     // The exact number of microtasks is an implementation detail; just needs
     // to happen when the microtask queue is flushed.
-    await null;
-    await null;
-    await null;
+    await waitForMicrotasks();
 
     expect(console.error).toHaveBeenCalledTimes(0);
 

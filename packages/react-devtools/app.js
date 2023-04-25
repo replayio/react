@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-const {app, BrowserWindow} = require('electron'); // Module to create native browser window.
+const {app, BrowserWindow, shell} = require('electron'); // Module to create native browser window.
 const {join} = require('path');
 const os = require('os');
 
@@ -27,8 +27,10 @@ app.on('ready', function () {
     frame: false,
     //titleBarStyle: 'customButtonsOnHover',
     webPreferences: {
-      nodeIntegration: true,
-      nodeIntegrationInWorker: true,
+      contextIsolation: true, // protect against prototype pollution
+      enableRemoteModule: false, // turn off remote
+      sandbox: false, // allow preload script to access file system
+      preload: join(__dirname, 'preload.js'), // use a preload script to expose node globals
     },
   });
 
@@ -38,9 +40,9 @@ app.on('ready', function () {
   }
 
   // https://stackoverflow.com/questions/32402327/
-  mainWindow.webContents.on('new-window', function (event, url) {
-    event.preventDefault();
-    require('electron').shell.openExternal(url);
+  mainWindow.webContents.setWindowOpenHandler(({url}) => {
+    shell.openExternal(url);
+    return {action: 'deny'};
   });
 
   // and load the index.html of the app.

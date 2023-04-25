@@ -9,9 +9,9 @@
 
 import type {Fiber} from './ReactInternalTypes';
 import type {StackCursor} from './ReactFiberStack';
-import type {Container, HostContext} from './ReactFiberHostConfig';
+import type {Container, HostContext} from './ReactFiberConfig';
 
-import {getChildHostContext, getRootHostContext} from './ReactFiberHostConfig';
+import {getChildHostContext, getRootHostContext} from './ReactFiberConfig';
 import {createCursor, push, pop} from './ReactFiberStack';
 
 const contextStackCursor: StackCursor<HostContext | null> = createCursor(null);
@@ -40,7 +40,7 @@ function getRootHostContainer(): Container {
   return rootInstance;
 }
 
-function pushHostContainer(fiber: Fiber, nextRootInstance: Container) {
+function pushHostContainer(fiber: Fiber, nextRootInstance: Container): void {
   // Push current root instance onto the stack;
   // This allows us to reset root when portals are popped.
   push(rootInstanceStackCursor, nextRootInstance, fiber);

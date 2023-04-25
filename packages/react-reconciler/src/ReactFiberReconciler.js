@@ -20,7 +20,7 @@ import type {
   Container,
   PublicInstance,
   RendererInspectionConfig,
-} from './ReactFiberHostConfig';
+} from './ReactFiberConfig';
 import type {ReactNodeList} from 'shared/ReactTypes';
 import type {Lane} from './ReactFiberLane';
 import type {SuspenseState} from './ReactFiberSuspenseComponent';
@@ -41,7 +41,7 @@ import getComponentNameFromFiber from 'react-reconciler/src/getComponentNameFrom
 import isArray from 'shared/isArray';
 import {enableSchedulingProfiler} from 'shared/ReactFeatureFlags';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
-import {getPublicInstance} from './ReactFiberHostConfig';
+import {getPublicInstance} from './ReactFiberConfig';
 import {
   findCurrentUnmaskedContext,
   processChildContext,
@@ -56,7 +56,6 @@ import {
   onScheduleRoot,
 } from './ReactFiberDevToolsHook';
 import {
-  requestEventTime,
   requestUpdateLane,
   scheduleUpdateOnFiber,
   scheduleInitialHydrationOnRoot,
@@ -64,7 +63,6 @@ import {
   batchedUpdates,
   flushSync,
   isAlreadyRendering,
-  flushControlled,
   deferredUpdates,
   discreteUpdates,
   flushPassiveEffects,
@@ -85,7 +83,6 @@ import {StrictLegacyMode} from './ReactTypeOfMode';
 import {
   SyncLane,
   SelectiveHydrationLane,
-  NoTimestamp,
   getHighestPriorityPendingLanes,
   higherPriorityLane,
 } from './ReactFiberLane';
@@ -114,6 +111,7 @@ export {
   focusWithin,
   observeVisibleRects,
 } from './ReactTestSelectors';
+export {startHostTransition} from './ReactFiberHooks';
 
 type OpaqueRoot = FiberRoot;
 
@@ -312,9 +310,8 @@ export function createHydrationContainer(
   const update = createUpdate(lane);
   update.callback =
     callback !== undefined && callback !== null ? callback : null;
-  const eventTime = requestEventTime();
   enqueueUpdate(current, update, lane);
-  scheduleInitialHydrationOnRoot(root, lane, eventTime);
+  scheduleInitialHydrationOnRoot(root, lane);
 
   return root;
 }
@@ -380,8 +377,7 @@ export function updateContainer(
 
   const root = enqueueUpdate(current, update, lane);
   if (root !== null) {
-    const eventTime = requestEventTime();
-    scheduleUpdateOnFiber(root, current, lane, eventTime);
+    scheduleUpdateOnFiber(root, current, lane);
     entangleTransitions(root, current, lane);
   }
 
@@ -392,7 +388,6 @@ export {
   batchedUpdates,
   deferredUpdates,
   discreteUpdates,
-  flushControlled,
   flushSync,
   isAlreadyRendering,
   flushPassiveEffects,
@@ -429,8 +424,7 @@ export function attemptSynchronousHydration(fiber: Fiber): void {
       flushSync(() => {
         const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
         if (root !== null) {
-          const eventTime = requestEventTime();
-          scheduleUpdateOnFiber(root, fiber, SyncLane, eventTime);
+          scheduleUpdateOnFiber(root, fiber, SyncLane);
         }
       });
       // If we're still blocked after this, we need to increase
@@ -462,23 +456,6 @@ function markRetryLaneIfNotHydrated(fiber: Fiber, retryLane: Lane) {
   }
 }
 
-export function attemptDiscreteHydration(fiber: Fiber): void {
-  if (fiber.tag !== SuspenseComponent) {
-    // We ignore HostRoots here because we can't increase
-    // their priority and they should not suspend on I/O,
-    // since you have to wrap anything that might suspend in
-    // Suspense.
-    return;
-  }
-  const lane = SyncLane;
-  const root = enqueueConcurrentRenderForLane(fiber, lane);
-  if (root !== null) {
-    const eventTime = requestEventTime();
-    scheduleUpdateOnFiber(root, fiber, lane, eventTime);
-  }
-  markRetryLaneIfNotHydrated(fiber, lane);
-}
-
 export function attemptContinuousHydration(fiber: Fiber): void {
   if (fiber.tag !== SuspenseComponent) {
     // We ignore HostRoots here because we can't increase
@@ -490,8 +467,7 @@ export function attemptContinuousHydration(fiber: Fiber): void {
   const lane = SelectiveHydrationLane;
   const root = enqueueConcurrentRenderForLane(fiber, lane);
   if (root !== null) {
-    const eventTime = requestEventTime();
-    scheduleUpdateOnFiber(root, fiber, lane, eventTime);
+    scheduleUpdateOnFiber(root, fiber, lane);
   }
   markRetryLaneIfNotHydrated(fiber, lane);
 }
@@ -505,8 +481,7 @@ export function attemptHydrationAtCurrentPriority(fiber: Fiber): void {
   const lane = requestUpdateLane(fiber);
   const root = enqueueConcurrentRenderForLane(fiber, lane);
   if (root !== null) {
-    const eventTime = requestEventTime();
-    scheduleUpdateOnFiber(root, fiber, lane, eventTime);
+    scheduleUpdateOnFiber(root, fiber, lane);
   }
   markRetryLaneIfNotHydrated(fiber, lane);
 }
@@ -565,7 +540,7 @@ if (__DEV__) {
       }
       return updated;
     }
-    // $FlowFixMe number or string is fine here
+    // $FlowFixMe[incompatible-use] number or string is fine here
     updated[key] = copyWithDeleteImpl(obj[key], path, index + 1);
     return updated;
   };
@@ -587,7 +562,7 @@ if (__DEV__) {
     const updated = isArray(obj) ? obj.slice() : {...obj};
     if (index + 1 === oldPath.length) {
       const newKey = newPath[index];
-      // $FlowFixMe number or string is fine here
+      // $FlowFixMe[incompatible-use] number or string is fine here
       updated[newKey] = updated[oldKey];
       if (isArray(updated)) {
         updated.splice(((oldKey: any): number), 1);
@@ -595,9 +570,9 @@ if (__DEV__) {
         delete updated[oldKey];
       }
     } else {
-      // $FlowFixMe number or string is fine here
+      // $FlowFixMe[incompatible-use] number or string is fine here
       updated[oldKey] = copyWithRenameImpl(
-        // $FlowFixMe number or string is fine here
+        // $FlowFixMe[incompatible-use] number or string is fine here
         obj[oldKey],
         oldPath,
         newPath,
@@ -639,7 +614,7 @@ if (__DEV__) {
     }
     const key = path[index];
     const updated = isArray(obj) ? obj.slice() : {...obj};
-    // $FlowFixMe number or string is fine here
+    // $FlowFixMe[incompatible-use] number or string is fine here
     updated[key] = copyWithSetImpl(obj[key], path, index + 1, value);
     return updated;
   };
@@ -685,7 +660,7 @@ if (__DEV__) {
 
       const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
       if (root !== null) {
-        scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+        scheduleUpdateOnFiber(root, fiber, SyncLane);
       }
     }
   };
@@ -709,7 +684,7 @@ if (__DEV__) {
 
       const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
       if (root !== null) {
-        scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+        scheduleUpdateOnFiber(root, fiber, SyncLane);
       }
     }
   };
@@ -734,7 +709,7 @@ if (__DEV__) {
 
       const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
       if (root !== null) {
-        scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+        scheduleUpdateOnFiber(root, fiber, SyncLane);
       }
     }
   };
@@ -747,7 +722,7 @@ if (__DEV__) {
     }
     const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
     if (root !== null) {
-      scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+      scheduleUpdateOnFiber(root, fiber, SyncLane);
     }
   };
   overridePropsDeletePath = (fiber: Fiber, path: Array<string | number>) => {
@@ -757,7 +732,7 @@ if (__DEV__) {
     }
     const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
     if (root !== null) {
-      scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+      scheduleUpdateOnFiber(root, fiber, SyncLane);
     }
   };
   overridePropsRenamePath = (
@@ -771,14 +746,14 @@ if (__DEV__) {
     }
     const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
     if (root !== null) {
-      scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+      scheduleUpdateOnFiber(root, fiber, SyncLane);
     }
   };
 
   scheduleUpdate = (fiber: Fiber) => {
     const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
     if (root !== null) {
-      scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+      scheduleUpdateOnFiber(root, fiber, SyncLane);
     }
   };
 

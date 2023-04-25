@@ -15,9 +15,9 @@ import type {
   OwnersList,
   ProfilingDataBackend,
   RendererID,
+  ConsolePatchSettings,
 } from 'react-devtools-shared/src/backend/types';
 import type {StyleAndLayout as StyleAndLayoutPayload} from 'react-devtools-shared/src/backend/NativeStyleEditor/types';
-import type {ConsolePatchSettings} from 'react-devtools-shared/src/backend/console';
 
 const BATCH_DURATION = 100;
 
@@ -194,6 +194,7 @@ export type BackendEvents = {
   profilingData: [ProfilingDataBackend],
   profilingStatus: [boolean],
   reloadAppForProfiling: [],
+  saveToClipboard: [string],
   selectFiber: [number],
   shutdown: [],
   stopInspectingNative: [boolean],
@@ -339,9 +340,9 @@ class Bridge<
     this._isShutdown = true;
 
     // Disable the API inherited from EventEmitter that can add more listeners and send more messages.
-    // $FlowFixMe This property is not writable.
+    // $FlowFixMe[cannot-write] This property is not writable.
     this.addListener = function () {};
-    // $FlowFixMe This property is not writable.
+    // $FlowFixMe[cannot-write] This property is not writable.
     this.emit = function () {};
     // NOTE: There's also EventEmitter API like `on` and `prependListener` that we didn't add to our Flow type of EventEmitter.
 

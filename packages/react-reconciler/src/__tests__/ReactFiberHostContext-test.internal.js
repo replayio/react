@@ -70,9 +70,21 @@ describe('ReactFiberHostContext', () => {
       getCurrentEventPriority: function () {
         return DefaultEventPriority;
       },
+      shouldAttemptEagerTransition() {
+        return false;
+      },
       requestPostPaintCallback: function () {},
-      prepareRendererToRender: function () {},
-      resetRendererAfterRender: function () {},
+      maySuspendCommit(type, props) {
+        return false;
+      },
+      preloadInstance(type, props) {
+        return true;
+      },
+      startSuspendingCommit() {},
+      suspendInstance(type, props) {},
+      waitForCommitToBeReady() {
+        return null;
+      },
       supportsMutation: true,
     });
 

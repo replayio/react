@@ -18,7 +18,7 @@ describe('ReactLazyContextPropagation', () => {
     React = require('react');
     ReactNoop = require('react-noop-renderer');
     Scheduler = require('scheduler');
-    act = require('jest-react').act;
+    act = require('internal-test-utils').act;
     useState = React.useState;
     useContext = React.useContext;
     Suspense = React.Suspense;
@@ -96,16 +96,16 @@ describe('ReactLazyContextPropagation', () => {
     if (record !== undefined) {
       switch (record.status) {
         case 'pending':
-          Scheduler.unstable_yieldValue(`Suspend! [${text}]`);
+          Scheduler.log(`Suspend! [${text}]`);
           throw record.value;
         case 'rejected':
-          Scheduler.unstable_yieldValue(`Error! [${text}]`);
+          Scheduler.log(`Error! [${text}]`);
           throw record.value;
         case 'resolved':
           return textCache.version;
       }
     } else {
-      Scheduler.unstable_yieldValue(`Suspend! [${text}]`);
+      Scheduler.log(`Suspend! [${text}]`);
 
       const thenable = {
         pings: [],
@@ -129,14 +129,14 @@ describe('ReactLazyContextPropagation', () => {
   }
 
   function Text({text}) {
-    Scheduler.unstable_yieldValue(text);
+    Scheduler.log(text);
     return text;
   }
 
   // function AsyncText({text, showVersion}) {
   //   const version = readText(text);
   //   const fullText = showVersion ? `${text} [v${version}]` : text;
-  //   Scheduler.unstable_yieldValue(fullText);
+  //   Scheduler.log(fullText);
   //   return text;
   // }
 
@@ -203,13 +203,13 @@ describe('ReactLazyContextPropagation', () => {
         return <Text text={value} />;
       }
 
-      await act(async () => {
+      await act(() => {
         root.render(<App />);
       });
       assertLog([0]);
       expect(root).toMatchRenderedOutput('0');
 
-      await act(async () => {
+      await act(() => {
         setValue(1);
       });
       assertLog([1]);
@@ -245,13 +245,13 @@ describe('ReactLazyContextPropagation', () => {
       return <Text text={value} />;
     }
 
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog([0]);
     expect(root).toMatchRenderedOutput('0');
 
-    await act(async () => {
+    await act(() => {
       setValue(1);
     });
     assertLog([1]);
@@ -288,13 +288,13 @@ describe('ReactLazyContextPropagation', () => {
       return <Text text={value} />;
     }
 
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog([0]);
     expect(root).toMatchRenderedOutput('0');
 
-    await act(async () => {
+    await act(() => {
       setValue(1);
     });
     assertLog([1]);
@@ -321,24 +321,29 @@ describe('ReactLazyContextPropagation', () => {
       const [, _setOtherValue] = useState(0);
       setOtherValue = _setOtherValue;
 
-      Scheduler.unstable_yieldValue('Consumer');
+      Scheduler.log('Consumer');
 
       return <Text text={value} />;
     });
 
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['Consumer', 0]);
     expect(root).toMatchRenderedOutput('0');
 
-    await act(async () => {
+    await act(() => {
       // Intentionally calling setState to some other arbitrary value before
       // setting it back to the current one. That way an update is scheduled,
       // but we'll bail out during render when nothing has changed.
       setOtherValue(1);
       setOtherValue(0);
     });
+    // NOTE: If this didn't yield anything, that indicates that we never visited
+    // the consumer during the render phase, which probably means the eager
+    // bailout mechanism kicked in. Because we're testing the _lazy_ bailout
+    // mechanism, update this test to foil the _eager_ bailout, somehow. Perhaps
+    // by switching to useReducer.
     assertLog(['Consumer']);
     expect(root).toMatchRenderedOutput('0');
   });
@@ -383,13 +388,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     await seedNextTextCache('A');
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       // Intentionally not wrapping in startTransition, so that the fallback
       // the fallback displays despite this being a refresh.
       setContext('B');
@@ -463,13 +468,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     await seedNextTextCache('A');
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A', 'A']);
     expect(root).toMatchRenderedOutput('AAA');
 
-    await act(async () => {
+    await act(() => {
       // Intentionally not wrapping in startTransition, so that the fallback
       // the fallback displays despite this being a refresh.
       setContext('B');
@@ -524,13 +529,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     await seedNextTextCache('A');
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       // Intentionally not wrapping in startTransition, so that the fallback
       // the fallback displays despite this being a refresh.
       setContext('B');
@@ -578,13 +583,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     await seedNextTextCache('A');
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       setContext('B');
     });
     assertLog(['B', 'B']);
@@ -639,13 +644,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     await seedNextTextCache('A');
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A', 'A']);
     expect(root).toMatchRenderedOutput('AAA');
 
-    await act(async () => {
+    await act(() => {
       setContext('B');
     });
     assertLog(['B', 'B', 'B']);
@@ -681,13 +686,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     const root = ReactNoop.createRoot();
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       setContext('B');
     });
     assertLog(['B', 'B']);
@@ -735,13 +740,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     const root = ReactNoop.createRoot();
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       setContext('B');
     });
     assertLog(['B', 'B']);
@@ -798,13 +803,13 @@ describe('ReactLazyContextPropagation', () => {
 
     const root = ReactNoop.createRoot();
     await seedNextTextCache('A');
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       setContext('B');
     });
     assertLog(['Suspend! [B]', 'Loading...']);
@@ -859,13 +864,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     const root = ReactNoop.createRoot();
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       setContext('B');
     });
     assertLog(['B', 'B']);
@@ -908,13 +913,13 @@ describe('ReactLazyContextPropagation', () => {
     }
 
     const root = ReactNoop.createRoot();
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['A', 'A']);
     expect(root).toMatchRenderedOutput('AA');
 
-    await act(async () => {
+    await act(() => {
       setContext('B');
     });
     assertLog(['B', 'B']);

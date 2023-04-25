@@ -15,15 +15,20 @@ import type {
   ClientReferenceMetadata,
   UninitializedModel,
   Response,
-  BundlerConfig,
-} from './ReactFlightClientHostConfig';
+  SSRManifest,
+} from './ReactFlightClientConfig';
+
+import type {HintModel} from 'react-server/src/ReactFlightServerConfig';
 
 import {
   resolveClientReference,
   preloadModule,
   requireModule,
   parseModel,
-} from './ReactFlightClientHostConfig';
+  dispatchHint,
+} from './ReactFlightClientConfig';
+
+import {knownServerReferences} from './ReactFlightServerReferenceRegistry';
 
 import {REACT_LAZY_TYPE, REACT_ELEMENT_TYPE} from 'shared/ReactSymbols';
 
@@ -149,7 +154,7 @@ Chunk.prototype.then = function <T>(
 };
 
 export type ResponseBase = {
-  _bundlerConfig: BundlerConfig,
+  _bundlerConfig: SSRManifest,
   _callServer: CallServerCallback,
   _chunks: Map<number, SomeChunk<any>>,
   ...
@@ -187,12 +192,12 @@ export function getRoot<T>(response: Response): Thenable<T> {
 }
 
 function createPendingChunk<T>(response: Response): PendingChunk<T> {
-  // $FlowFixMe Flow doesn't support functions as constructors
+  // $FlowFixMe[invalid-constructor] Flow doesn't support functions as constructors
   return new Chunk(PENDING, null, null, response);
 }
 
 function createBlockedChunk<T>(response: Response): BlockedChunk<T> {
-  // $FlowFixMe Flow doesn't support functions as constructors
+  // $FlowFixMe[invalid-constructor] Flow doesn't support functions as constructors
   return new Chunk(BLOCKED, null, null, response);
 }
 
@@ -200,7 +205,7 @@ function createErrorChunk<T>(
   response: Response,
   error: ErrorWithDigest,
 ): ErroredChunk<T> {
-  // $FlowFixMe Flow doesn't support functions as constructors
+  // $FlowFixMe[invalid-constructor] Flow doesn't support functions as constructors
   return new Chunk(ERRORED, null, error, response);
 }
 
@@ -251,7 +256,7 @@ function createResolvedModelChunk<T>(
   response: Response,
   value: UninitializedModel,
 ): ResolvedModelChunk<T> {
-  // $FlowFixMe Flow doesn't support functions as constructors
+  // $FlowFixMe[invalid-constructor] Flow doesn't support functions as constructors
   return new Chunk(RESOLVED_MODEL, value, null, response);
 }
 
@@ -259,7 +264,7 @@ function createResolvedModuleChunk<T>(
   response: Response,
   value: ClientReference<T>,
 ): ResolvedModuleChunk<T> {
-  // $FlowFixMe Flow doesn't support functions as constructors
+  // $FlowFixMe[invalid-constructor] Flow doesn't support functions as constructors
   return new Chunk(RESOLVED_MODULE, value, null, response);
 }
 
@@ -473,23 +478,29 @@ function createModelReject<T>(chunk: SomeChunk<T>): (error: mixed) => void {
 
 function createServerReferenceProxy<A: Iterable<any>, T>(
   response: Response,
-  metaData: any,
+  metaData: {id: any, bound: null | Thenable<Array<any>>},
 ): (...A) => Promise<T> {
   const callServer = response._callServer;
   const proxy = function (): Promise<T> {
     // $FlowFixMe[method-unbinding]
     const args = Array.prototype.slice.call(arguments);
     const p = metaData.bound;
+    if (!p) {
+      return callServer(metaData.id, args);
+    }
     if (p.status === INITIALIZED) {
       const bound = p.value;
-      return callServer(metaData, bound.concat(args));
+      return callServer(metaData.id, bound.concat(args));
     }
     // Since this is a fake Promise whose .then doesn't chain, we have to wrap it.
     // TODO: Remove the wrapper once that's fixed.
-    return Promise.resolve(p).then(function (bound) {
-      return callServer(metaData, bound.concat(args));
+    return ((Promise.resolve(p): any): Promise<Array<any>>).then(function (
+      bound,
+    ) {
+      return callServer(metaData.id, bound.concat(args));
     });
   };
+  knownServerReferences.set(proxy, metaData);
   return proxy;
 }
 
@@ -507,11 +518,11 @@ export function parseModelString(
     switch (value[1]) {
       case '$': {
         // This was an escaped string value.
-        return value.substring(1);
+        return value.slice(1);
       }
       case 'L': {
         // Lazy node
-        const id = parseInt(value.substring(2), 16);
+        const id = parseInt(value.slice(2), 16);
         const chunk = getChunk(response, id);
         // We create a React.lazy wrapper around any lazy values.
         // When passed into React, we'll know how to suspend on this.
@@ -519,21 +530,21 @@ export function parseModelString(
       }
       case '@': {
         // Promise
-        const id = parseInt(value.substring(2), 16);
+        const id = parseInt(value.slice(2), 16);
         const chunk = getChunk(response, id);
         return chunk;
       }
       case 'S': {
         // Symbol
-        return Symbol.for(value.substring(2));
+        return Symbol.for(value.slice(2));
       }
       case 'P': {
         // Server Context Provider
-        return getOrCreateServerContext(value.substring(2)).Provider;
+        return getOrCreateServerContext(value.slice(2)).Provider;
       }
       case 'F': {
         // Server Reference
-        const id = parseInt(value.substring(2), 16);
+        const id = parseInt(value.slice(2), 16);
         const chunk = getChunk(response, id);
         switch (chunk.status) {
           case RESOLVED_MODEL:
@@ -551,9 +562,38 @@ export function parseModelString(
             throw chunk.reason;
         }
       }
+      case 'I': {
+        // $Infinity
+        return Infinity;
+      }
+      case '-': {
+        // $-0 or $-Infinity
+        if (value === '$-0') {
+          return -0;
+        } else {
+          return -Infinity;
+        }
+      }
+      case 'N': {
+        // $NaN
+        return NaN;
+      }
+      case 'u': {
+        // matches "$undefined"
+        // Special encoding for `undefined` which can't be serialized as JSON otherwise.
+        return undefined;
+      }
+      case 'D': {
+        // Date
+        return new Date(Date.parse(value.slice(2)));
+      }
+      case 'n': {
+        // BigInt
+        return BigInt(value.slice(2));
+      }
       default: {
         // We assume that anything else is a reference ID.
-        const id = parseInt(value.substring(1), 16);
+        const id = parseInt(value.slice(1), 16);
         const chunk = getChunk(response, id);
         switch (chunk.status) {
           case RESOLVED_MODEL:
@@ -606,7 +646,7 @@ function missingCall() {
 }
 
 export function createResponse(
-  bundlerConfig: BundlerConfig,
+  bundlerConfig: SSRManifest,
   callServer: void | CallServerCallback,
 ): ResponseBase {
   const chunks: Map<number, SomeChunk<any>> = new Map();
@@ -739,6 +779,15 @@ export function resolveErrorDev(
   } else {
     triggerErrorOnChunk(chunk, errorWithDigest);
   }
+}
+
+export function resolveHint(
+  response: Response,
+  code: string,
+  model: UninitializedModel,
+): void {
+  const hintModel = parseModel<HintModel>(response, model);
+  dispatchHint(code, hintModel);
 }
 
 export function close(response: Response): void {

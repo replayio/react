@@ -10,11 +10,11 @@
 import type {
   Container,
   PublicInstance,
-} from 'react-dom-bindings/src/client/ReactDOMHostConfig';
+} from 'react-dom-bindings/src/client/ReactFiberConfigDOM';
 import type {FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
 import type {ReactNodeList} from 'shared/ReactTypes';
 
-import {clearContainer} from 'react-dom-bindings/src/client/ReactDOMHostConfig';
+import {clearContainer} from 'react-dom-bindings/src/client/ReactFiberConfigDOM';
 import {
   getInstanceFromNode,
   isContainerMarkedAsRoot,
@@ -27,7 +27,7 @@ import {
   DOCUMENT_NODE,
   ELEMENT_NODE,
   COMMENT_NODE,
-} from 'react-dom-bindings/src/shared/HTMLNodeType';
+} from 'react-dom-bindings/src/client/HTMLNodeType';
 
 import {
   createContainer,
@@ -420,7 +420,7 @@ export function unmountComponentAtNode(container: Container): boolean {
     // Unmount should not be batched.
     flushSync(() => {
       legacyRenderSubtreeIntoContainer(null, null, container, false, () => {
-        // $FlowFixMe This should probably use `delete container._reactRootContainer`
+        // $FlowFixMe[incompatible-type] This should probably use `delete container._reactRootContainer`
         container._reactRootContainer = null;
         unmarkContainerAsRoot(container);
       });

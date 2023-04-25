@@ -25,7 +25,7 @@ describe('ReactDeferredValue', () => {
     React = require('react');
     ReactNoop = require('react-noop-renderer');
     Scheduler = require('scheduler');
-    act = require('jest-react').act;
+    act = require('internal-test-utils').act;
     startTransition = React.startTransition;
     useDeferredValue = React.useDeferredValue;
     useMemo = React.useMemo;
@@ -37,7 +37,7 @@ describe('ReactDeferredValue', () => {
   });
 
   function Text({text}) {
-    Scheduler.unstable_yieldValue(text);
+    Scheduler.log(text);
     return text;
   }
 
@@ -68,7 +68,7 @@ describe('ReactDeferredValue', () => {
     const root = ReactNoop.createRoot();
 
     // Initial render
-    await act(async () => {
+    await act(() => {
       root.render(<App value={1} />);
     });
     assertLog(['Original: 1', 'Deferred: 1']);
@@ -78,6 +78,7 @@ describe('ReactDeferredValue', () => {
       root.render(<App value={2} />);
 
       await waitForPaint(['Original: 2']);
+      // The deferred value updates in a separate render
       await waitForPaint(['Deferred: 2']);
     });
     expect(root).toMatchRenderedOutput(
@@ -92,6 +93,7 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={3} />);
       });
+      // The deferred value updates in the same render as the original
       await waitForPaint(['Original: 3', 'Deferred: 3']);
     });
     expect(root).toMatchRenderedOutput(
@@ -127,7 +129,7 @@ describe('ReactDeferredValue', () => {
     const root = ReactNoop.createRoot();
 
     // Initial render
-    await act(async () => {
+    await act(() => {
       root.render(<App value={1} />);
     });
     assertLog(['Original: 1', 'Deferred: 1']);
@@ -137,6 +139,7 @@ describe('ReactDeferredValue', () => {
       root.render(<App value={2} />);
 
       await waitForPaint(['Original: 2']);
+      // The deferred value updates in a separate render
       await waitForPaint(['Deferred: 2']);
     });
     expect(root).toMatchRenderedOutput(
@@ -151,6 +154,7 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={3} />);
       });
+      // The deferred value updates in the same render as the original
       await waitForPaint(['Original: 3', 'Deferred: 3']);
     });
     expect(root).toMatchRenderedOutput(
@@ -191,7 +195,7 @@ describe('ReactDeferredValue', () => {
     const root = ReactNoop.createRoot();
 
     // Initial render
-    await act(async () => {
+    await act(() => {
       root.render(<App value={1} />);
     });
     assertLog(['Original: 1', 'Deferred: 1']);
@@ -201,6 +205,7 @@ describe('ReactDeferredValue', () => {
       root.render(<App value={2} />);
 
       await waitForPaint(['Original: 2']);
+      // The deferred value updates in a separate render
       await waitForPaint(['Deferred: 2']);
     });
     expect(root).toMatchRenderedOutput(
@@ -215,6 +220,7 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={3} />);
       });
+      // The deferred value updates in the same render as the original
       await waitForPaint(['Original: 3', 'Deferred: 3']);
     });
     expect(root).toMatchRenderedOutput(
@@ -270,6 +276,9 @@ describe('ReactDeferredValue', () => {
       startTransition(() => {
         root.render(<App value={2} />);
       });
+      // In the regression, the memoized value was not updated during non-urgent
+      // updates, so this would flip the deferred value back to the initial
+      // value (1) instead of reusing the current one (2).
       await waitForPaint(['Original: 2', 'Deferred: 2']);
       expect(root).toMatchRenderedOutput(
         <div>

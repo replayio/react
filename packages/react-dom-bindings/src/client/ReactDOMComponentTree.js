@@ -7,20 +7,21 @@
  * @flow
  */
 
-import type {HoistableRoot, RootResources} from './ReactDOMFloatClient';
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
 import type {ReactScopeInstance} from 'shared/ReactTypes';
 import type {
   ReactDOMEventHandle,
   ReactDOMEventHandleListener,
-} from '../shared/ReactDOMTypes';
+} from './ReactDOMEventHandleTypes';
 import type {
   Container,
   TextInstance,
   Instance,
   SuspenseInstance,
   Props,
-} from './ReactDOMHostConfig';
+  HoistableRoot,
+  RootResources,
+} from './ReactFiberConfigDOM';
 
 import {
   HostComponent,
@@ -31,7 +32,7 @@ import {
   SuspenseComponent,
 } from 'react-reconciler/src/ReactWorkTags';
 
-import {getParentSuspenseInstance} from './ReactDOMHostConfig';
+import {getParentSuspenseInstance} from './ReactFiberConfigDOM';
 
 import {
   enableScopeAPI,
@@ -47,7 +48,7 @@ const internalEventHandlersKey = '__reactEvents$' + randomKey;
 const internalEventHandlerListenersKey = '__reactListeners$' + randomKey;
 const internalEventHandlesSetKey = '__reactHandles$' + randomKey;
 const internalRootNodeResourcesKey = '__reactResources$' + randomKey;
-const internalResourceMarker = '__reactMarker$' + randomKey;
+const internalHoistableMarker = '__reactMarker$' + randomKey;
 
 export function detachDeletedInstance(node: Instance): void {
   // TODO: This function is only called on host components. I don't think all of
@@ -288,10 +289,16 @@ export function getResourcesFromRoot(root: HoistableRoot): RootResources {
   return resources;
 }
 
-export function isMarkedResource(node: Node): boolean {
-  return !!(node: any)[internalResourceMarker];
+export function isMarkedHoistable(node: Node): boolean {
+  return !!(node: any)[internalHoistableMarker];
 }
 
-export function markNodeAsResource(node: Node) {
-  (node: any)[internalResourceMarker] = true;
+export function markNodeAsHoistable(node: Node) {
+  (node: any)[internalHoistableMarker] = true;
+}
+
+export function isOwnedInstance(node: Node): boolean {
+  return !!(
+    (node: any)[internalHoistableMarker] || (node: any)[internalInstanceKey]
+  );
 }

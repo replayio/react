@@ -107,6 +107,8 @@ import {
   enableUseMutableSource,
   enableFloat,
   enableHostSingletons,
+  enableFormActions,
+  enableAsyncActions,
 } from 'shared/ReactFeatureFlags';
 import isArray from 'shared/isArray';
 import shallowEqual from 'shared/shallowEqual';
@@ -142,7 +144,6 @@ import {
   OffscreenLane,
   DefaultHydrationLane,
   SomeRetryLane,
-  NoTimestamp,
   includesSomeLane,
   laneToLanes,
   removeLanes,
@@ -168,8 +169,8 @@ import {
   isPrimaryRenderer,
   getResource,
   createHoistableInstance,
-} from './ReactFiberHostConfig';
-import type {SuspenseInstance} from './ReactFiberHostConfig';
+} from './ReactFiberConfig';
+import type {SuspenseInstance} from './ReactFiberConfig';
 import {shouldError, shouldSuspend} from './ReactFiberReconciler';
 import {
   pushHostContext,
@@ -209,6 +210,7 @@ import {
   checkDidRenderIdHook,
   bailoutHooks,
   replaySuspendedComponentWithHooks,
+  renderTransitionAwareHostComponentWithHooks,
 } from './ReactFiberHooks';
 import {stopProfilerTimerIfRunning} from './ReactProfilerTimer';
 import {
@@ -227,6 +229,8 @@ import {
   resetHydrationState,
   claimHydratableSingleton,
   tryToClaimNextHydratableInstance,
+  tryToClaimNextHydratableTextInstance,
+  tryToClaimNextHydratableSuspenseInstance,
   warnIfHydrating,
   queueHydrationError,
 } from './ReactFiberHydrationContext';
@@ -1166,17 +1170,12 @@ export function replayFunctionComponent(
   workInProgress: Fiber,
   nextProps: any,
   Component: any,
+  secondArg: any,
   renderLanes: Lanes,
 ): Fiber | null {
   // This function is used to replay a component that previously suspended,
   // after its data resolves. It's a simplified version of
   // updateFunctionComponent that reuses the hooks from the previous attempt.
-
-  let context;
-  if (!disableLegacyContext) {
-    const unmaskedContext = getUnmaskedContext(workInProgress, Component, true);
-    context = getMaskedContext(workInProgress, unmaskedContext);
-  }
 
   prepareToReadContext(workInProgress, renderLanes);
   if (enableSchedulingProfiler) {
@@ -1187,7 +1186,7 @@ export function replayFunctionComponent(
     workInProgress,
     Component,
     nextProps,
-    context,
+    secondArg,
   );
   const hasId = checkDidRenderIdHook();
   if (enableSchedulingProfiler) {
@@ -1624,6 +1623,23 @@ function updateHostComponent(
     workInProgress.flags |= ContentReset;
   }
 
+  if (enableFormActions && enableAsyncActions) {
+    const memoizedState = workInProgress.memoizedState;
+    if (memoizedState !== null) {
+      // This fiber has been upgraded to a stateful component. The only way
+      // happens currently is for form actions. We use hooks to track the
+      // pending and error state of the form.
+      //
+      // Once a fiber is upgraded to be stateful, it remains stateful for the
+      // rest of its lifetime.
+      renderTransitionAwareHostComponentWithHooks(
+        current,
+        workInProgress,
+        renderLanes,
+      );
+    }
+  }
+
   markRef(current, workInProgress);
   reconcileChildren(current, workInProgress, nextChildren, renderLanes);
   return workInProgress.child;
@@ -1694,7 +1710,7 @@ function updateHostSingleton(
 
 function updateHostText(current: null | Fiber, workInProgress: Fiber) {
   if (current === null) {
-    tryToClaimNextHydratableInstance(workInProgress);
+    tryToClaimNextHydratableTextInstance(workInProgress);
   }
   // Nothing to do here. This is terminal. We'll do the completion step
   // immediately after.
@@ -2165,6 +2181,8 @@ function shouldRemainOnFallback(
   // If we're already showing a fallback, there are cases where we need to
   // remain on that fallback regardless of whether the content has resolved.
   // For example, SuspenseList coordinates when nested content appears.
+  // TODO: For compatibility with offscreen prerendering, this should also check
+  // whether the current fiber (if it exists) was visible in the previous tree.
   if (current !== null) {
     const suspenseState: SuspenseState = current.memoizedState;
     if (suspenseState === null) {
@@ -2250,7 +2268,7 @@ function updateSuspenseComponent(
       } else {
         pushFallbackTreeSuspenseHandler(workInProgress);
       }
-      tryToClaimNextHydratableInstance(workInProgress);
+      tryToClaimNextHydratableSuspenseInstance(workInProgress);
       // This could've been a dehydrated suspense component.
       const suspenseState: null | SuspenseState = workInProgress.memoizedState;
       if (suspenseState !== null) {
@@ -2296,7 +2314,7 @@ function updateSuspenseComponent(
             const newOffscreenQueue: OffscreenQueue = {
               transitions: currentTransitions,
               markerInstances: parentMarkerInstances,
-              wakeables: null,
+              retryQueue: null,
             };
             primaryChildFragment.updateQueue = newOffscreenQueue;
           } else {
@@ -2397,7 +2415,7 @@ function updateSuspenseComponent(
             const newOffscreenQueue: OffscreenQueue = {
               transitions: currentTransitions,
               markerInstances: parentMarkerInstances,
-              wakeables: null,
+              retryQueue: null,
             };
             primaryChildFragment.updateQueue = newOffscreenQueue;
           } else if (offscreenQueue === currentOffscreenQueue) {
@@ -2406,9 +2424,9 @@ function updateSuspenseComponent(
             const newOffscreenQueue: OffscreenQueue = {
               transitions: currentTransitions,
               markerInstances: parentMarkerInstances,
-              wakeables:
+              retryQueue:
                 currentOffscreenQueue !== null
-                  ? currentOffscreenQueue.wakeables
+                  ? currentOffscreenQueue.retryQueue
                   : null,
             };
             primaryChildFragment.updateQueue = newOffscreenQueue;
@@ -2877,15 +2895,8 @@ function updateDehydratedSuspenseComponent(
           // is one of the very rare times where we mutate the current tree
           // during the render phase.
           suspenseState.retryLane = attemptHydrationAtLane;
-          // TODO: Ideally this would inherit the event time of the current render
-          const eventTime = NoTimestamp;
           enqueueConcurrentRenderForLane(current, attemptHydrationAtLane);
-          scheduleUpdateOnFiber(
-            root,
-            current,
-            attemptHydrationAtLane,
-            eventTime,
-          );
+          scheduleUpdateOnFiber(root, current, attemptHydrationAtLane);
 
           // Throw a special object that signals to the work loop that it should
           // interrupt the current render.
@@ -4097,12 +4108,12 @@ function beginWork(
       if (enableFloat && supportsResources) {
         return updateHostHoistable(current, workInProgress, renderLanes);
       }
-    // eslint-disable-next-line no-fallthrough
+    // Fall through
     case HostSingleton:
       if (enableHostSingletons && supportsSingletons) {
         return updateHostSingleton(current, workInProgress, renderLanes);
       }
-    // eslint-disable-next-line no-fallthrough
+    // Fall through
     case HostComponent:
       return updateHostComponent(current, workInProgress, renderLanes);
     case HostText:

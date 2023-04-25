@@ -13,10 +13,10 @@ import type {
   MeasureInWindowOnSuccessCallback,
   MeasureLayoutOnSuccessCallback,
   MeasureOnSuccessCallback,
-  NativeMethods,
+  INativeMethods,
   ViewConfig,
 } from './ReactNativeTypes';
-import type {Instance} from './ReactNativeHostConfig';
+import type {Instance} from './ReactFiberConfigNative';
 
 // Modules provided by RN:
 import {
@@ -30,7 +30,7 @@ import {
   warnForStyleProps,
 } from './NativeMethodsMixinUtils';
 
-class ReactNativeFiberHostComponent implements NativeMethods {
+class ReactNativeFiberHostComponent implements INativeMethods {
   _children: Array<Instance | number>;
   _nativeTag: number;
   _internalFiberInstanceHandleDEV: Object;

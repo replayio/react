@@ -55,9 +55,9 @@ describe('InspectedElement', () => {
     ReactDOM = require('react-dom');
     ReactDOMClient = require('react-dom/client');
     PropTypes = require('prop-types');
-    TestUtilsAct = require('jest-react').act;
+    TestUtilsAct = require('internal-test-utils').act;
     TestRenderer = utils.requireTestRenderer();
-    TestRendererAct = require('jest-react').act;
+    TestRendererAct = require('internal-test-utils').act;
 
     BridgeContext =
       require('react-devtools-shared/src/devtools/views/context').BridgeContext;
@@ -1069,8 +1069,8 @@ describe('InspectedElement', () => {
     });
 
     async function loadPath(path) {
-      TestUtilsAct(() => {
-        TestRendererAct(() => {
+      await TestUtilsAct(async () => {
+        await TestRendererAct(async () => {
           inspectElementPath(path);
           jest.runOnlyPendingTimers();
         });
@@ -1224,8 +1224,8 @@ describe('InspectedElement', () => {
     });
 
     async function loadPath(path) {
-      TestUtilsAct(() => {
-        TestRendererAct(() => {
+      await TestUtilsAct(async () => {
+        await TestRendererAct(async () => {
           inspectElementPath(path);
           jest.runOnlyPendingTimers();
         });
@@ -1306,8 +1306,8 @@ describe('InspectedElement', () => {
     });
 
     async function loadPath(path) {
-      TestUtilsAct(() => {
-        TestRendererAct(() => {
+      await TestUtilsAct(async () => {
+        await TestRendererAct(async () => {
           inspectElementPath(path);
           jest.runOnlyPendingTimers();
         });
@@ -1375,8 +1375,8 @@ describe('InspectedElement', () => {
       }
     `);
 
-    TestRendererAct(() => {
-      TestUtilsAct(() => {
+    await TestRendererAct(async () => {
+      await TestUtilsAct(async () => {
         legacyRender(
           <Example
             nestedObject={{
@@ -1469,8 +1469,8 @@ describe('InspectedElement', () => {
     });
 
     async function loadPath(path) {
-      TestUtilsAct(() => {
-        TestRendererAct(() => {
+      await TestUtilsAct(async () => {
+        await TestRendererAct(async () => {
           inspectElementPath(path);
           jest.runOnlyPendingTimers();
         });
@@ -1513,8 +1513,8 @@ describe('InspectedElement', () => {
       }
     `);
 
-    TestRendererAct(() => {
-      TestUtilsAct(() => {
+    await TestRendererAct(async () => {
+      await TestUtilsAct(async () => {
         legacyRender(
           <Example
             nestedObject={{
@@ -1596,8 +1596,8 @@ describe('InspectedElement', () => {
     });
 
     async function loadPath(path) {
-      TestUtilsAct(() => {
-        TestRendererAct(() => {
+      await TestUtilsAct(async () => {
+        await TestRendererAct(async () => {
           inspectElementPath(path);
           jest.runOnlyPendingTimers();
         });
@@ -1618,7 +1618,7 @@ describe('InspectedElement', () => {
       }
     `);
 
-    TestUtilsAct(() => {
+    await TestUtilsAct(async () => {
       legacyRender(
         <Example
           nestedObject={{
@@ -1640,11 +1640,9 @@ describe('InspectedElement', () => {
     expect(inspectedElement.props).toMatchInlineSnapshot(`
       {
         "nestedObject": {
-          "a": {
-            "b": {
-              "value": 2,
-            },
-            "value": 2,
+          "a": Dehydrated {
+            "preview_short": {…},
+            "preview_long": {b: {…}, value: 2},
           },
           "value": 2,
         },
@@ -1803,7 +1801,7 @@ describe('InspectedElement', () => {
     jest.runOnlyPendingTimers();
     expect(global.mockClipboardCopy).toHaveBeenCalledTimes(1);
     expect(global.mockClipboardCopy).toHaveBeenCalledWith(
-      JSON.stringify(nestedObject),
+      JSON.stringify(nestedObject, undefined, 2),
     );
 
     global.mockClipboardCopy.mockReset();
@@ -1813,7 +1811,7 @@ describe('InspectedElement', () => {
     jest.runOnlyPendingTimers();
     expect(global.mockClipboardCopy).toHaveBeenCalledTimes(1);
     expect(global.mockClipboardCopy).toHaveBeenCalledWith(
-      JSON.stringify(nestedObject.a.b),
+      JSON.stringify(nestedObject.a.b, undefined, 2),
     );
   });
 
@@ -1843,7 +1841,6 @@ describe('InspectedElement', () => {
         xyz: 1,
       },
     });
-    // $FlowFixMe
     const bigInt = BigInt(123); // eslint-disable-line no-undef
 
     await utils.actAsync(() =>
@@ -1897,7 +1894,7 @@ describe('InspectedElement', () => {
     jest.runOnlyPendingTimers();
     expect(global.mockClipboardCopy).toHaveBeenCalledTimes(1);
     expect(global.mockClipboardCopy).toHaveBeenCalledWith(
-      JSON.stringify('123n'),
+      JSON.stringify('123n', undefined, 2),
     );
 
     global.mockClipboardCopy.mockReset();
@@ -1907,7 +1904,7 @@ describe('InspectedElement', () => {
     jest.runOnlyPendingTimers();
     expect(global.mockClipboardCopy).toHaveBeenCalledTimes(1);
     expect(global.mockClipboardCopy).toHaveBeenCalledWith(
-      JSON.stringify({0: 100, 1: -100, 2: 0}),
+      JSON.stringify({0: 100, 1: -100, 2: 0}, undefined, 2),
     );
   });
 
@@ -2833,7 +2830,7 @@ describe('InspectedElement', () => {
       };
       const toggleError = async forceError => {
         await withErrorsOrWarningsIgnored(['ErrorBoundary'], async () => {
-          await TestUtilsAct(() => {
+          await TestUtilsAct(async () => {
             bridge.send('overrideError', {
               id: targetErrorBoundaryID,
               rendererID: store.getRendererIDForElement(targetErrorBoundaryID),
@@ -2842,7 +2839,7 @@ describe('InspectedElement', () => {
           });
         });
 
-        TestUtilsAct(() => {
+        await TestUtilsAct(async () => {
           jest.runOnlyPendingTimers();
         });
       };

@@ -11,7 +11,7 @@ import type {Thenable} from 'shared/ReactTypes.js';
 
 import type {Response} from 'react-client/src/ReactFlightClientStream';
 
-import type {BundlerConfig} from 'react-client/src/ReactFlightClientHostConfig';
+import type {SSRManifest} from 'react-client/src/ReactFlightClientConfig';
 
 import type {Readable} from 'stream';
 
@@ -32,9 +32,16 @@ function noServerCall() {
   );
 }
 
+export function createServerReference<A: Iterable<any>, T>(
+  id: any,
+  callServer: any,
+): (...A) => Promise<T> {
+  return noServerCall;
+}
+
 function createFromNodeStream<T>(
   stream: Readable,
-  moduleMap: $NonMaybeType<BundlerConfig>,
+  moduleMap: $NonMaybeType<SSRManifest>,
 ): Thenable<T> {
   const response: Response = createResponse(moduleMap, noServerCall);
   stream.on('data', chunk => {

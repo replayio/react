@@ -11,8 +11,16 @@ import Agent from './agent';
 
 import {attach} from './renderer';
 import {attach as attachLegacy} from './legacy/renderer';
+import {hasAssignedBackend} from './utils';
 
 import type {DevToolsHook, ReactRenderer, RendererInterface} from './types';
+
+// this is the backend that is compactible with all older React versions
+function isMatchingRender(version: string): boolean {
+  return !hasAssignedBackend(version);
+}
+
+export type InitBackend = typeof initBackend;
 
 export function initBackend(
   hook: DevToolsHook,
@@ -56,6 +64,14 @@ export function initBackend(
   ];
 
   const attachRenderer = (id: number, renderer: ReactRenderer) => {
+    // skip if already attached
+    if (renderer.attached) {
+      return;
+    }
+    // only attach if the renderer is compatible with the current version of the backend
+    if (!isMatchingRender(renderer.reconcilerVersion || renderer.version)) {
+      return;
+    }
     let rendererInterface = hook.rendererInterfaces.get(id);
 
     // Inject any not-yet-injected renderers (if we didn't reload-and-profile)
@@ -76,8 +92,7 @@ export function initBackend(
     }
 
     // Notify the DevTools frontend about new renderers.
-    // This includes any that were attached early
-    // (when SESSION_STORAGE_RELOAD_AND_PROFILE_KEY is set to true).
+    // This includes any that were attached early (via __REACT_DEVTOOLS_ATTACH__).
     if (rendererInterface != null) {
       hook.emit('renderer-attached', {
         id,
@@ -87,6 +102,7 @@ export function initBackend(
     } else {
       hook.emit('unsupported-renderer-version', id);
     }
+    renderer.attached = true;
   };
 
   // Connect renderers that have already injected themselves.

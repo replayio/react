@@ -64,18 +64,16 @@ ByteSize
 
 // TODO: Implement HTMLData, BlobData and URLData.
 
-import type {Request, ReactModel} from 'react-server/src/ReactFlightServer';
+import type {
+  Request,
+  ReactClientValue,
+} from 'react-server/src/ReactFlightServer';
 
 import {stringToChunk} from './ReactServerStreamConfig';
 
 import type {Chunk} from './ReactServerStreamConfig';
 
 export type {Destination, Chunk} from './ReactServerStreamConfig';
-
-export {
-  supportsRequestStorage,
-  requestStorage,
-} from './ReactServerStreamConfig';
 
 const stringify = JSON.stringify;
 
@@ -124,8 +122,9 @@ export function processErrorChunkDev(
 export function processModelChunk(
   request: Request,
   id: number,
-  model: ReactModel,
+  model: ReactClientValue,
 ): Chunk {
+  // $FlowFixMe[incompatible-type] stringify can return null
   const json: string = stringify(model, request.toJSON);
   const row = id.toString(16) + ':' + json + '\n';
   return stringToChunk(row);
@@ -144,10 +143,22 @@ export function processReferenceChunk(
 export function processImportChunk(
   request: Request,
   id: number,
-  clientReferenceMetadata: ReactModel,
+  clientReferenceMetadata: ReactClientValue,
 ): Chunk {
+  // $FlowFixMe[incompatible-type] stringify can return null
   const json: string = stringify(clientReferenceMetadata);
   const row = serializeRowHeader('I', id) + json + '\n';
+  return stringToChunk(row);
+}
+
+export function processHintChunk(
+  request: Request,
+  id: number,
+  code: string,
+  model: JSONValue,
+): Chunk {
+  const json: string = stringify(model);
+  const row = serializeRowHeader('H' + code, id) + json + '\n';
   return stringToChunk(row);
 }
 

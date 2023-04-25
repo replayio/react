@@ -7,6 +7,7 @@ let assertLog;
 let ReactCache;
 let Suspense;
 let TextResource;
+let act;
 
 describe('ReactBlockingMode', () => {
   beforeEach(() => {
@@ -23,12 +24,13 @@ describe('ReactBlockingMode', () => {
     const InternalTestUtils = require('internal-test-utils');
     waitForAll = InternalTestUtils.waitForAll;
     assertLog = InternalTestUtils.assertLog;
+    act = InternalTestUtils.act;
 
     TextResource = ReactCache.unstable_createResource(
       ([text, ms = 0]) => {
         return new Promise((resolve, reject) =>
           setTimeout(() => {
-            Scheduler.unstable_yieldValue(`Promise resolved [${text}]`);
+            Scheduler.log(`Promise resolved [${text}]`);
             resolve(text);
           }, ms),
         );
@@ -38,7 +40,7 @@ describe('ReactBlockingMode', () => {
   });
 
   function Text(props) {
-    Scheduler.unstable_yieldValue(props.text);
+    Scheduler.log(props.text);
     return props.text;
   }
 
@@ -46,13 +48,13 @@ describe('ReactBlockingMode', () => {
     const text = props.text;
     try {
       TextResource.read([props.text, props.ms]);
-      Scheduler.unstable_yieldValue(text);
+      Scheduler.log(text);
       return props.text;
     } catch (promise) {
       if (typeof promise.then === 'function') {
-        Scheduler.unstable_yieldValue(`Suspend! [${text}]`);
+        Scheduler.log(`Suspend! [${text}]`);
       } else {
-        Scheduler.unstable_yieldValue(`Error! [${text}]`);
+        Scheduler.log(`Error! [${text}]`);
       }
       throw promise;
     }
@@ -81,7 +83,7 @@ describe('ReactBlockingMode', () => {
 
     function App() {
       useLayoutEffect(() => {
-        Scheduler.unstable_yieldValue('Layout effect');
+        Scheduler.log('Layout effect');
       });
       return <Text text="Hi" />;
     }
@@ -111,15 +113,14 @@ describe('ReactBlockingMode', () => {
       </Suspense>,
     );
 
-    await waitForAll(['A', 'Suspend! [B]', 'C', 'Loading...']);
+    await waitForAll(['A', 'Suspend! [B]', 'Loading...']);
     // In Legacy Mode, A and B would mount in a hidden primary tree. In
     // Concurrent Mode, nothing in the primary tree should mount. But the
     // fallback should mount immediately.
     expect(root).toMatchRenderedOutput('Loading...');
 
-    await jest.advanceTimersByTime(1000);
-    assertLog(['Promise resolved [B]']);
-    await waitForAll(['A', 'B', 'C']);
+    await act(() => jest.advanceTimersByTime(1000));
+    assertLog(['Promise resolved [B]', 'A', 'B', 'C']);
     expect(root).toMatchRenderedOutput(
       <>
         <span>A</span>
@@ -166,9 +167,11 @@ describe('ReactBlockingMode', () => {
       assertLog(['A1', 'B1']);
       expect(root).toMatchRenderedOutput('A1B1');
     } else {
+      // Only the second update should have flushed synchronously
       assertLog(['B1']);
       expect(root).toMatchRenderedOutput('A0B1');
 
+      // Now flush the first update
       await waitForAll(['A1']);
       expect(root).toMatchRenderedOutput('A1B1');
     }

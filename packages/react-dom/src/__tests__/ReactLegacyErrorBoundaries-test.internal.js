@@ -800,6 +800,7 @@ describe('ReactLegacyErrorBoundaries', () => {
     expect(log).toEqual(['ErrorBoundary componentWillUnmount']);
   });
 
+  // @gate !disableLegacyContext || !__DEV__
   it('renders an error state if context provider throws in componentWillMount', () => {
     class BrokenComponentWillMountWithContext extends React.Component {
       static childContextTypes = {foo: PropTypes.number};
@@ -1039,10 +1040,7 @@ describe('ReactLegacyErrorBoundaries', () => {
       'BrokenRender constructor',
       'BrokenRender componentWillMount',
       'BrokenRender render [!]',
-      // Render third child, even though an earlier sibling threw.
-      'Normal constructor',
-      'Normal componentWillMount',
-      'Normal render',
+      // Skip the remaining siblings
       // Finish mounting with null children
       'ErrorBoundary componentDidMount',
       // Handle the error

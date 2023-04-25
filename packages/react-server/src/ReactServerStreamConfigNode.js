@@ -8,8 +8,8 @@
  */
 
 import type {Writable} from 'stream';
+
 import {TextEncoder} from 'util';
-import {AsyncLocalStorage} from 'async_hooks';
 
 interface MightBeFlushable {
   flush?: () => void;
@@ -33,10 +33,6 @@ export function flushBuffered(destination: Destination) {
     destination.flush();
   }
 }
-
-export const supportsRequestStorage = true;
-export const requestStorage: AsyncLocalStorage<Map<Function, mixed>> =
-  new AsyncLocalStorage();
 
 const VIEW_SIZE = 2048;
 let currentView = null;
@@ -220,6 +216,6 @@ export function clonePrecomputedChunk(
 }
 
 export function closeWithError(destination: Destination, error: mixed): void {
-  // $FlowFixMe: This is an Error object or the destination accepts other types.
+  // $FlowFixMe[incompatible-call]: This is an Error object or the destination accepts other types.
   destination.destroy(error);
 }

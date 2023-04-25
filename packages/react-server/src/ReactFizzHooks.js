@@ -19,7 +19,7 @@ import type {
   Usable,
 } from 'shared/ReactTypes';
 
-import type {ResponseState} from './ReactServerFormatConfig';
+import type {ResponseState} from './ReactFizzConfig';
 import type {Task} from './ReactFizzServer';
 import type {ThenableState} from './ReactFizzThenable';
 
@@ -27,11 +27,10 @@ import {readContext as readContextImpl} from './ReactFizzNewContext';
 import {getTreeId} from './ReactFizzTreeContext';
 import {createThenableState, trackUsedThenable} from './ReactFizzThenable';
 
-import {makeId} from './ReactServerFormatConfig';
+import {makeId} from './ReactFizzConfig';
 
 import {
   enableCache,
-  enableUseHook,
   enableUseEffectEventHook,
   enableUseMemoCacheHook,
 } from 'shared/ReactFeatureFlags';
@@ -291,7 +290,7 @@ function useContext<T>(context: ReactContext<T>): T {
 }
 
 function basicStateReducer<S>(state: S, action: BasicStateAction<S>): S {
-  // $FlowFixMe: Flow doesn't like mixed types
+  // $FlowFixMe[incompatible-use]: Flow doesn't like mixed types
   return typeof action === 'function' ? action(state) : action;
 }
 
@@ -440,23 +439,6 @@ function useRef<T>(initialValue: T): {current: T} {
   }
 }
 
-export function useLayoutEffect(
-  create: () => (() => void) | void,
-  inputs: Array<mixed> | void | null,
-) {
-  if (__DEV__) {
-    currentHookNameInDev = 'useLayoutEffect';
-    console.error(
-      'useLayoutEffect does nothing on the server, because its effect cannot ' +
-        "be encoded into the server renderer's output format. This will lead " +
-        'to a mismatch between the initial, non-hydrated UI and the intended ' +
-        'UI. To avoid this, useLayoutEffect should only be used in ' +
-        'components that render exclusively on the client. ' +
-        'See https://reactjs.org/link/uselayouteffect-ssr for common fixes.',
-    );
-  }
-}
-
 function dispatchAction<A>(
   componentIdentity: Object,
   queue: UpdateQueue<A>,
@@ -584,15 +566,7 @@ function use<T>(usable: Usable<T>): T {
     if (typeof usable.then === 'function') {
       // This is a thenable.
       const thenable: Thenable<T> = (usable: any);
-
-      // Track the position of the thenable within this fiber.
-      const index = thenableIndexCounter;
-      thenableIndexCounter += 1;
-
-      if (thenableState === null) {
-        thenableState = createThenableState();
-      }
-      return trackUsedThenable(thenableState, thenable, index);
+      return unwrapThenable(thenable);
     } else if (
       usable.$$typeof === REACT_CONTEXT_TYPE ||
       usable.$$typeof === REACT_SERVER_CONTEXT_TYPE
@@ -604,6 +578,15 @@ function use<T>(usable: Usable<T>): T {
 
   // eslint-disable-next-line react-internal/safe-string-coercion
   throw new Error('An unsupported type was passed to use(): ' + String(usable));
+}
+
+export function unwrapThenable<T>(thenable: Thenable<T>): T {
+  const index = thenableIndexCounter;
+  thenableIndexCounter += 1;
+  if (thenableState === null) {
+    thenableState = createThenableState();
+  }
+  return trackUsedThenable(thenableState, thenable, index);
 }
 
 function unsupportedRefresh() {
@@ -626,13 +609,14 @@ function noop(): void {}
 
 export const HooksDispatcher: Dispatcher = {
   readContext,
+  use,
   useContext,
   useMemo,
   useReducer,
   useRef,
   useState,
   useInsertionEffect: noop,
-  useLayoutEffect,
+  useLayoutEffect: noop,
   useCallback,
   // useImperativeHandle is not run in the server environment
   useImperativeHandle: noop,
@@ -656,9 +640,6 @@ if (enableUseEffectEventHook) {
 }
 if (enableUseMemoCacheHook) {
   HooksDispatcher.useMemoCache = useMemoCache;
-}
-if (enableUseHook) {
-  HooksDispatcher.use = use;
 }
 
 export let currentResponseState: null | ResponseState = (null: any);

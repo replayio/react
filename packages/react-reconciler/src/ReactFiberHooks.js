@@ -15,6 +15,7 @@ import type {
   StartTransitionOptions,
   Usable,
   Thenable,
+  RejectedThenable,
 } from 'shared/ReactTypes';
 import type {
   Fiber,
@@ -36,11 +37,12 @@ import {
   enableLazyContextPropagation,
   enableUseMutableSource,
   enableTransitionTracing,
-  enableUseHook,
   enableUseMemoCacheHook,
   enableUseEffectEventHook,
   enableLegacyCache,
   debugRenderPhaseSideEffectsForStrictMode,
+  enableAsyncActions,
+  enableFormActions,
 } from 'shared/ReactFeatureFlags';
 import {
   REACT_CONTEXT_TYPE,
@@ -70,7 +72,6 @@ import {
   isTransitionLane,
   markRootEntangled,
   markRootMutableRead,
-  NoTimestamp,
 } from './ReactFiberLane';
 import {
   ContinuousEventPriority,
@@ -79,7 +80,7 @@ import {
   higherEventPriority,
 } from './ReactEventPriorities';
 import {readContext, checkIfContextChanged} from './ReactFiberNewContext';
-import {HostRoot, CacheComponent} from './ReactWorkTags';
+import {HostRoot, CacheComponent, HostComponent} from './ReactWorkTags';
 import {
   LayoutStatic as LayoutStaticEffect,
   Passive as PassiveEffect,
@@ -101,7 +102,6 @@ import {
   getWorkInProgressRootRenderLanes,
   scheduleUpdateOnFiber,
   requestUpdateLane,
-  requestEventTime,
   markSkippedUpdateLanes,
   isInvalidExecutionContextForEventFunction,
 } from './ReactFiberWorkLoop';
@@ -145,6 +145,7 @@ import {
 } from './ReactFiberThenable';
 import type {ThenableState} from './ReactFiberThenable';
 import type {BatchConfigTransition} from './ReactFiberTracingMarkerComponent';
+import {requestAsyncActionContext} from './ReactFiberAsyncAction';
 
 const {ReactCurrentDispatcher, ReactCurrentBatchConfig} = ReactSharedInternals;
 
@@ -165,7 +166,7 @@ export type UpdateQueue<S, A> = {
 };
 
 let didWarnAboutMismatchedHooksForComponent;
-let didWarnUncachedGetSnapshot;
+let didWarnUncachedGetSnapshot: void | true;
 let didWarnAboutUseWrappedInTryCatch;
 if (__DEV__) {
   didWarnAboutMismatchedHooksForComponent = new Set<string | null>();
@@ -180,11 +181,29 @@ export type Hook = {
   next: Hook | null,
 };
 
+// The effect "instance" is a shared object that remains the same for the entire
+// lifetime of an effect. In Rust terms, a RefCell. We use it to store the
+// "destroy" function that is returned from an effect, because that is stateful.
+// The field is `undefined` if the effect is unmounted, or if the effect ran
+// but is not stateful. We don't explicitly track whether the effect is mounted
+// or unmounted because that can be inferred by the hiddenness of the fiber in
+// the tree, i.e. whether there is a hidden Offscreen fiber above it.
+//
+// It's unfortunate that this is stored on a separate object, because it adds
+// more memory per effect instance, but it's conceptually sound. I think there's
+// likely a better data structure we could use for effects; perhaps just one
+// array of effect instances per fiber. But I think this is OK for now despite
+// the additional memory and we can follow up with performance
+// optimizations later.
+type EffectInstance = {
+  destroy: void | (() => void),
+};
+
 export type Effect = {
   tag: HookFlags,
   create: () => (() => void) | void,
-  destroy: (() => void) | void,
-  deps: Array<mixed> | void | null,
+  inst: EffectInstance,
+  deps: Array<mixed> | null,
   next: Effect,
 };
 
@@ -734,6 +753,33 @@ function renderWithHooksAgain<Props, SecondArg>(
   return children;
 }
 
+export function renderTransitionAwareHostComponentWithHooks(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  lanes: Lanes,
+): boolean {
+  if (!(enableFormActions && enableAsyncActions)) {
+    return false;
+  }
+  return renderWithHooks(
+    current,
+    workInProgress,
+    TransitionAwareHostComponent,
+    null,
+    null,
+    lanes,
+  );
+}
+
+export function TransitionAwareHostComponent(): boolean {
+  if (!(enableFormActions && enableAsyncActions)) {
+    return false;
+  }
+  const dispatcher = ReactCurrentDispatcher.current;
+  const [isPending] = dispatcher.useTransition();
+  return isPending;
+}
+
 export function checkDidRenderIdHook(): boolean {
   // This should be called immediately after every renderWithHooks call.
   // Conceptually, it's part of the return value of renderWithHooks; it's only a
@@ -931,38 +977,40 @@ if (enableUseMemoCacheHook) {
   };
 }
 
+function useThenable<T>(thenable: Thenable<T>): T {
+  // Track the position of the thenable within this fiber.
+  const index = thenableIndexCounter;
+  thenableIndexCounter += 1;
+  if (thenableState === null) {
+    thenableState = createThenableState();
+  }
+  const result = trackUsedThenable(thenableState, thenable, index);
+  if (
+    currentlyRenderingFiber.alternate === null &&
+    (workInProgressHook === null
+      ? currentlyRenderingFiber.memoizedState === null
+      : workInProgressHook.next === null)
+  ) {
+    // Initial render, and either this is the first time the component is
+    // called, or there were no Hooks called after this use() the previous
+    // time (perhaps because it threw). Subsequent Hook calls should use the
+    // mount dispatcher.
+    if (__DEV__) {
+      ReactCurrentDispatcher.current = HooksDispatcherOnMountInDEV;
+    } else {
+      ReactCurrentDispatcher.current = HooksDispatcherOnMount;
+    }
+  }
+  return result;
+}
+
 function use<T>(usable: Usable<T>): T {
   if (usable !== null && typeof usable === 'object') {
     // $FlowFixMe[method-unbinding]
     if (typeof usable.then === 'function') {
       // This is a thenable.
       const thenable: Thenable<T> = (usable: any);
-
-      // Track the position of the thenable within this fiber.
-      const index = thenableIndexCounter;
-      thenableIndexCounter += 1;
-
-      if (thenableState === null) {
-        thenableState = createThenableState();
-      }
-      const result = trackUsedThenable(thenableState, thenable, index);
-      if (
-        currentlyRenderingFiber.alternate === null &&
-        (workInProgressHook === null
-          ? currentlyRenderingFiber.memoizedState === null
-          : workInProgressHook.next === null)
-      ) {
-        // Initial render, and either this is the first time the component is
-        // called, or there were no Hooks called after this use() the previous
-        // time (perhaps because it threw). Subsequent Hook calls should use the
-        // mount dispatcher.
-        if (__DEV__) {
-          ReactCurrentDispatcher.current = HooksDispatcherOnMountInDEV;
-        } else {
-          ReactCurrentDispatcher.current = HooksDispatcherOnMount;
-        }
-      }
-      return result;
+      return useThenable(thenable);
     } else if (
       usable.$$typeof === REACT_CONTEXT_TYPE ||
       usable.$$typeof === REACT_SERVER_CONTEXT_TYPE
@@ -1036,7 +1084,7 @@ function useMemoCache(size: number): Array<any> {
 }
 
 function basicStateReducer<S>(state: S, action: BasicStateAction<S>): S {
-  // $FlowFixMe: Flow doesn't like mixed types
+  // $FlowFixMe[incompatible-use]: Flow doesn't like mixed types
   return typeof action === 'function' ? action(state) : action;
 }
 
@@ -1662,7 +1710,7 @@ function mountSyncExternalStore<T>(
   pushEffect(
     HookHasEffect | HookPassive,
     updateStoreInstance.bind(null, fiber, inst, nextSnapshot, getSnapshot),
-    undefined,
+    createEffectInstance(),
     null,
   );
 
@@ -1719,7 +1767,7 @@ function updateSyncExternalStore<T>(
     pushEffect(
       HookHasEffect | HookPassive,
       updateStoreInstance.bind(null, fiber, inst, nextSnapshot, getSnapshot),
-      undefined,
+      createEffectInstance(),
       null,
     );
 
@@ -1819,7 +1867,7 @@ function checkIfSnapshotChanged<T>(inst: StoreInstance<T>): boolean {
 function forceStoreRerender(fiber: Fiber) {
   const root = enqueueConcurrentRenderForLane(fiber, SyncLane);
   if (root !== null) {
-    scheduleUpdateOnFiber(root, fiber, SyncLane, NoTimestamp);
+    scheduleUpdateOnFiber(root, fiber, SyncLane);
   }
 }
 
@@ -1828,7 +1876,7 @@ function mountState<S>(
 ): [S, Dispatch<BasicStateAction<S>>] {
   const hook = mountWorkInProgressHook();
   if (typeof initialState === 'function') {
-    // $FlowFixMe: Flow doesn't like mixed types
+    // $FlowFixMe[incompatible-use]: Flow doesn't like mixed types
     initialState = initialState();
   }
   hook.memoizedState = hook.baseState = initialState;
@@ -1860,13 +1908,13 @@ function rerenderState<S>(
 function pushEffect(
   tag: HookFlags,
   create: () => (() => void) | void,
-  destroy: (() => void) | void,
-  deps: Array<mixed> | void | null,
+  inst: EffectInstance,
+  deps: Array<mixed> | null,
 ): Effect {
   const effect: Effect = {
     tag,
     create,
-    destroy,
+    inst,
     deps,
     // Circular
     next: (null: any),
@@ -1889,6 +1937,10 @@ function pushEffect(
     }
   }
   return effect;
+}
+
+function createEffectInstance(): EffectInstance {
+  return {destroy: undefined};
 }
 
 let stackContainsErrorMessage: boolean | null = null;
@@ -1994,7 +2046,7 @@ function mountEffectImpl(
   hook.memoizedState = pushEffect(
     HookHasEffect | hookFlags,
     create,
-    undefined,
+    createEffectInstance(),
     nextDeps,
   );
 }
@@ -2007,16 +2059,16 @@ function updateEffectImpl(
 ): void {
   const hook = updateWorkInProgressHook();
   const nextDeps = deps === undefined ? null : deps;
-  let destroy = undefined;
+  const effect: Effect = hook.memoizedState;
+  const inst = effect.inst;
 
   // currentHook is null when rerendering after a render phase state update.
   if (currentHook !== null) {
-    const prevEffect = currentHook.memoizedState;
-    destroy = prevEffect.destroy;
     if (nextDeps !== null) {
+      const prevEffect: Effect = currentHook.memoizedState;
       const prevDeps = prevEffect.deps;
       if (areHookInputsEqual(nextDeps, prevDeps)) {
-        hook.memoizedState = pushEffect(hookFlags, create, destroy, nextDeps);
+        hook.memoizedState = pushEffect(hookFlags, create, inst, nextDeps);
         return;
       }
     }
@@ -2027,7 +2079,7 @@ function updateEffectImpl(
   hook.memoizedState = pushEffect(
     HookHasEffect | hookFlags,
     create,
-    destroy,
+    inst,
     nextDeps,
   );
 }
@@ -2380,8 +2432,8 @@ function updateDeferredValueImpl<T>(hook: Hook, prevValue: T, value: T): T {
 }
 
 function startTransition(
-  setPending: boolean => void,
-  callback: () => void,
+  setPending: (Thenable<boolean> | boolean) => void,
+  callback: () => mixed,
   options?: StartTransitionOptions,
 ): void {
   const previousPriority = getCurrentUpdatePriority();
@@ -2389,11 +2441,11 @@ function startTransition(
     higherEventPriority(previousPriority, ContinuousEventPriority),
   );
 
-  setPending(true);
-
   const prevTransition = ReactCurrentBatchConfig.transition;
-  ReactCurrentBatchConfig.transition = ({}: BatchConfigTransition);
-  const currentTransition = ReactCurrentBatchConfig.transition;
+  ReactCurrentBatchConfig.transition = null;
+  setPending(true);
+  const currentTransition = (ReactCurrentBatchConfig.transition =
+    ({}: BatchConfigTransition));
 
   if (enableTransitionTracing) {
     if (options !== undefined && options.name !== undefined) {
@@ -2407,8 +2459,36 @@ function startTransition(
   }
 
   try {
-    setPending(false);
-    callback();
+    if (enableAsyncActions) {
+      const returnValue = callback();
+
+      // `isPending` is either `false` or a thenable that resolves to `false`,
+      // depending on whether the action scope is an async function. In the
+      // async case, the resulting render will suspend until the async action
+      // scope has finished.
+      const isPending = requestAsyncActionContext(returnValue);
+      setPending(isPending);
+    } else {
+      // Async actions are not enabled.
+      setPending(false);
+      callback();
+    }
+  } catch (error) {
+    if (enableAsyncActions) {
+      // This is a trick to get the `useTransition` hook to rethrow the error.
+      // When it unwraps the thenable with the `use` algorithm, the error
+      // will be thrown.
+      const rejectedThenable: RejectedThenable<boolean> = {
+        then() {},
+        status: 'rejected',
+        reason: error,
+      };
+      setPending(rejectedThenable);
+    } else {
+      // The error rethrowing behavior is only enabled when the async actions
+      // feature is on, even for sync actions.
+      throw error;
+    }
   } finally {
     setCurrentUpdatePriority(previousPriority);
 
@@ -2430,25 +2510,121 @@ function startTransition(
   }
 }
 
+export function startHostTransition<F>(
+  formFiber: Fiber,
+  callback: F => mixed,
+  formData: F,
+): void {
+  if (!enableFormActions) {
+    // Not implemented.
+    return;
+  }
+
+  if (!enableAsyncActions) {
+    // Form actions are enabled, but async actions are not. Call the function,
+    // but don't handle any pending or error states.
+    callback(formData);
+    return;
+  }
+
+  if (formFiber.tag !== HostComponent) {
+    throw new Error(
+      'Expected the form instance to be a HostComponent. This ' +
+        'is a bug in React.',
+    );
+  }
+
+  let setPending;
+  if (formFiber.memoizedState === null) {
+    // Upgrade this host component fiber to be stateful. We're going to pretend
+    // it was stateful all along so we can reuse most of the implementation
+    // for function components and useTransition.
+    //
+    // Create the initial hooks used by useTransition. This is essentially an
+    // inlined version of mountTransition.
+    const queue: UpdateQueue<
+      Thenable<boolean> | boolean,
+      Thenable<boolean> | boolean,
+    > = {
+      pending: null,
+      lanes: NoLanes,
+      dispatch: null,
+      lastRenderedReducer: basicStateReducer,
+      lastRenderedState: false,
+    };
+    const stateHook: Hook = {
+      memoizedState: false,
+      baseState: false,
+      baseQueue: null,
+      queue: queue,
+      next: null,
+    };
+
+    const dispatch: (Thenable<boolean> | boolean) => void =
+      (dispatchSetState.bind(null, formFiber, queue): any);
+    setPending = queue.dispatch = dispatch;
+
+    // TODO: The only reason this second hook exists is to save a reference to
+    // the `dispatch` function. But we already store this on the state hook. So
+    // we can cheat and read it from there. Need to make this change to the
+    // regular `useTransition` implementation, too.
+    const transitionHook: Hook = {
+      memoizedState: dispatch,
+      baseState: null,
+      baseQueue: null,
+      queue: null,
+      next: null,
+    };
+
+    stateHook.next = transitionHook;
+
+    // Add the initial list of hooks to both fiber alternates. The idea is that
+    // the fiber had these hooks all along.
+    formFiber.memoizedState = stateHook;
+    const alternate = formFiber.alternate;
+    if (alternate !== null) {
+      alternate.memoizedState = stateHook;
+    }
+  } else {
+    // This fiber was already upgraded to be stateful.
+    const transitionHook: Hook = formFiber.memoizedState.next;
+    const dispatch: (Thenable<boolean> | boolean) => void =
+      transitionHook.memoizedState;
+    setPending = dispatch;
+  }
+
+  startTransition(
+    setPending,
+    // TODO: We can avoid this extra wrapper, somehow. Figure out layering
+    // once more of this function is implemented.
+    () => callback(formData),
+  );
+}
+
 function mountTransition(): [
   boolean,
   (callback: () => void, options?: StartTransitionOptions) => void,
 ] {
-  const [isPending, setPending] = mountState(false);
+  const [, setPending] = mountState((false: Thenable<boolean> | boolean));
   // The `start` method never changes.
   const start = startTransition.bind(null, setPending);
   const hook = mountWorkInProgressHook();
   hook.memoizedState = start;
-  return [isPending, start];
+  return [false, start];
 }
 
 function updateTransition(): [
   boolean,
   (callback: () => void, options?: StartTransitionOptions) => void,
 ] {
-  const [isPending] = updateState(false);
+  const [booleanOrThenable] = updateState(false);
   const hook = updateWorkInProgressHook();
   const start = hook.memoizedState;
+  const isPending =
+    typeof booleanOrThenable === 'boolean'
+      ? booleanOrThenable
+      : // This will suspend until the async action scope has finished.
+        useThenable(booleanOrThenable);
   return [isPending, start];
 }
 
@@ -2456,9 +2632,14 @@ function rerenderTransition(): [
   boolean,
   (callback: () => void, options?: StartTransitionOptions) => void,
 ] {
-  const [isPending] = rerenderState(false);
+  const [booleanOrThenable] = rerenderState(false);
   const hook = updateWorkInProgressHook();
   const start = hook.memoizedState;
+  const isPending =
+    typeof booleanOrThenable === 'boolean'
+      ? booleanOrThenable
+      : // This will suspend until the async action scope has finished.
+        useThenable(booleanOrThenable);
   return [isPending, start];
 }
 
@@ -2536,8 +2717,7 @@ function refreshCache<T>(fiber: Fiber, seedKey: ?() => T, seedValue: T): void {
         const refreshUpdate = createLegacyQueueUpdate(lane);
         const root = enqueueLegacyQueueUpdate(provider, refreshUpdate, lane);
         if (root !== null) {
-          const eventTime = requestEventTime();
-          scheduleUpdateOnFiber(root, provider, lane, eventTime);
+          scheduleUpdateOnFiber(root, provider, lane);
           entangleLegacyQueueTransitions(root, provider, lane);
         }
 
@@ -2601,8 +2781,7 @@ function dispatchReducerAction<S, A>(
   } else {
     const root = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
     if (root !== null) {
-      const eventTime = requestEventTime();
-      scheduleUpdateOnFiber(root, fiber, lane, eventTime);
+      scheduleUpdateOnFiber(root, fiber, lane);
       entangleTransitionUpdate(root, queue, lane);
     }
   }
@@ -2684,8 +2863,7 @@ function dispatchSetState<S, A>(
 
     const root = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
     if (root !== null) {
-      const eventTime = requestEventTime();
-      scheduleUpdateOnFiber(root, fiber, lane, eventTime);
+      scheduleUpdateOnFiber(root, fiber, lane);
       entangleTransitionUpdate(root, queue, lane);
     }
   }
@@ -2765,6 +2943,7 @@ function markUpdateInDevTools<A>(fiber: Fiber, lane: Lane, action: A): void {
 export const ContextOnlyDispatcher: Dispatcher = {
   readContext,
 
+  use,
   useCallback: throwInvalidHookError,
   useContext: throwInvalidHookError,
   useEffect: throwInvalidHookError,
@@ -2785,9 +2964,6 @@ export const ContextOnlyDispatcher: Dispatcher = {
 if (enableCache) {
   (ContextOnlyDispatcher: Dispatcher).useCacheRefresh = throwInvalidHookError;
 }
-if (enableUseHook) {
-  (ContextOnlyDispatcher: Dispatcher).use = throwInvalidHookError;
-}
 if (enableUseMemoCacheHook) {
   (ContextOnlyDispatcher: Dispatcher).useMemoCache = throwInvalidHookError;
 }
@@ -2798,6 +2974,7 @@ if (enableUseEffectEventHook) {
 const HooksDispatcherOnMount: Dispatcher = {
   readContext,
 
+  use,
   useCallback: mountCallback,
   useContext: readContext,
   useEffect: mountEffect,
@@ -2818,9 +2995,6 @@ const HooksDispatcherOnMount: Dispatcher = {
 if (enableCache) {
   (HooksDispatcherOnMount: Dispatcher).useCacheRefresh = mountRefresh;
 }
-if (enableUseHook) {
-  (HooksDispatcherOnMount: Dispatcher).use = use;
-}
 if (enableUseMemoCacheHook) {
   (HooksDispatcherOnMount: Dispatcher).useMemoCache = useMemoCache;
 }
@@ -2830,6 +3004,7 @@ if (enableUseEffectEventHook) {
 const HooksDispatcherOnUpdate: Dispatcher = {
   readContext,
 
+  use,
   useCallback: updateCallback,
   useContext: readContext,
   useEffect: updateEffect,
@@ -2853,9 +3028,6 @@ if (enableCache) {
 if (enableUseMemoCacheHook) {
   (HooksDispatcherOnUpdate: Dispatcher).useMemoCache = useMemoCache;
 }
-if (enableUseHook) {
-  (HooksDispatcherOnUpdate: Dispatcher).use = use;
-}
 if (enableUseEffectEventHook) {
   (HooksDispatcherOnUpdate: Dispatcher).useEffectEvent = updateEvent;
 }
@@ -2863,6 +3035,7 @@ if (enableUseEffectEventHook) {
 const HooksDispatcherOnRerender: Dispatcher = {
   readContext,
 
+  use,
   useCallback: updateCallback,
   useContext: readContext,
   useEffect: updateEffect,
@@ -2882,9 +3055,6 @@ const HooksDispatcherOnRerender: Dispatcher = {
 };
 if (enableCache) {
   (HooksDispatcherOnRerender: Dispatcher).useCacheRefresh = updateRefresh;
-}
-if (enableUseHook) {
-  (HooksDispatcherOnRerender: Dispatcher).use = use;
 }
 if (enableUseMemoCacheHook) {
   (HooksDispatcherOnRerender: Dispatcher).useMemoCache = useMemoCache;
@@ -2924,6 +3094,7 @@ if (__DEV__) {
     readContext<T>(context: ReactContext<T>): T {
       return readContext(context);
     },
+    use,
     useCallback<T>(callback: T, deps: Array<mixed> | void | null): T {
       currentHookNameInDev = 'useCallback';
       mountHookTypesDev();
@@ -3064,9 +3235,6 @@ if (__DEV__) {
         return mountRefresh();
       };
   }
-  if (enableUseHook) {
-    (HooksDispatcherOnMountInDEV: Dispatcher).use = use;
-  }
   if (enableUseMemoCacheHook) {
     (HooksDispatcherOnMountInDEV: Dispatcher).useMemoCache = useMemoCache;
   }
@@ -3085,6 +3253,7 @@ if (__DEV__) {
     readContext<T>(context: ReactContext<T>): T {
       return readContext(context);
     },
+    use,
     useCallback<T>(callback: T, deps: Array<mixed> | void | null): T {
       currentHookNameInDev = 'useCallback';
       updateHookTypesDev();
@@ -3219,9 +3388,6 @@ if (__DEV__) {
         return mountRefresh();
       };
   }
-  if (enableUseHook) {
-    (HooksDispatcherOnMountWithHookTypesInDEV: Dispatcher).use = use;
-  }
   if (enableUseMemoCacheHook) {
     (HooksDispatcherOnMountWithHookTypesInDEV: Dispatcher).useMemoCache =
       useMemoCache;
@@ -3241,6 +3407,7 @@ if (__DEV__) {
     readContext<T>(context: ReactContext<T>): T {
       return readContext(context);
     },
+    use,
     useCallback<T>(callback: T, deps: Array<mixed> | void | null): T {
       currentHookNameInDev = 'useCallback';
       updateHookTypesDev();
@@ -3378,9 +3545,6 @@ if (__DEV__) {
         return updateRefresh();
       };
   }
-  if (enableUseHook) {
-    (HooksDispatcherOnUpdateInDEV: Dispatcher).use = use;
-  }
   if (enableUseMemoCacheHook) {
     (HooksDispatcherOnUpdateInDEV: Dispatcher).useMemoCache = useMemoCache;
   }
@@ -3399,7 +3563,7 @@ if (__DEV__) {
     readContext<T>(context: ReactContext<T>): T {
       return readContext(context);
     },
-
+    use,
     useCallback<T>(callback: T, deps: Array<mixed> | void | null): T {
       currentHookNameInDev = 'useCallback';
       updateHookTypesDev();
@@ -3537,9 +3701,6 @@ if (__DEV__) {
         return updateRefresh();
       };
   }
-  if (enableUseHook) {
-    (HooksDispatcherOnRerenderInDEV: Dispatcher).use = use;
-  }
   if (enableUseMemoCacheHook) {
     (HooksDispatcherOnRerenderInDEV: Dispatcher).useMemoCache = useMemoCache;
   }
@@ -3558,6 +3719,10 @@ if (__DEV__) {
     readContext<T>(context: ReactContext<T>): T {
       warnInvalidContextAccess();
       return readContext(context);
+    },
+    use<T>(usable: Usable<T>): T {
+      warnInvalidHookAccess();
+      return use(usable);
     },
     useCallback<T>(callback: T, deps: Array<mixed> | void | null): T {
       currentHookNameInDev = 'useCallback';
@@ -3709,14 +3874,6 @@ if (__DEV__) {
         return mountRefresh();
       };
   }
-  if (enableUseHook) {
-    (InvalidNestedHooksDispatcherOnMountInDEV: Dispatcher).use = function <T>(
-      usable: Usable<T>,
-    ): T {
-      warnInvalidHookAccess();
-      return use(usable);
-    };
-  }
   if (enableUseMemoCacheHook) {
     (InvalidNestedHooksDispatcherOnMountInDEV: Dispatcher).useMemoCache =
       function (size: number): Array<any> {
@@ -3740,6 +3897,10 @@ if (__DEV__) {
     readContext<T>(context: ReactContext<T>): T {
       warnInvalidContextAccess();
       return readContext(context);
+    },
+    use<T>(usable: Usable<T>): T {
+      warnInvalidHookAccess();
+      return use(usable);
     },
     useCallback<T>(callback: T, deps: Array<mixed> | void | null): T {
       currentHookNameInDev = 'useCallback';
@@ -3894,14 +4055,6 @@ if (__DEV__) {
         return updateRefresh();
       };
   }
-  if (enableUseHook) {
-    (InvalidNestedHooksDispatcherOnUpdateInDEV: Dispatcher).use = function <T>(
-      usable: Usable<T>,
-    ): T {
-      warnInvalidHookAccess();
-      return use(usable);
-    };
-  }
   if (enableUseMemoCacheHook) {
     (InvalidNestedHooksDispatcherOnUpdateInDEV: Dispatcher).useMemoCache =
       function (size: number): Array<any> {
@@ -3926,7 +4079,10 @@ if (__DEV__) {
       warnInvalidContextAccess();
       return readContext(context);
     },
-
+    use<T>(usable: Usable<T>): T {
+      warnInvalidHookAccess();
+      return use(usable);
+    },
     useCallback<T>(callback: T, deps: Array<mixed> | void | null): T {
       currentHookNameInDev = 'useCallback';
       warnInvalidHookAccess();
@@ -4079,14 +4235,6 @@ if (__DEV__) {
         updateHookTypesDev();
         return updateRefresh();
       };
-  }
-  if (enableUseHook) {
-    (InvalidNestedHooksDispatcherOnRerenderInDEV: Dispatcher).use = function <
-      T,
-    >(usable: Usable<T>): T {
-      warnInvalidHookAccess();
-      return use(usable);
-    };
   }
   if (enableUseMemoCacheHook) {
     (InvalidNestedHooksDispatcherOnRerenderInDEV: Dispatcher).useMemoCache =

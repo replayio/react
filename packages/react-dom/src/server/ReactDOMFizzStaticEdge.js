@@ -8,7 +8,7 @@
  */
 
 import type {ReactNodeList} from 'shared/ReactTypes';
-import type {BootstrapScriptDescriptor} from 'react-dom-bindings/src/server/ReactDOMServerFormatConfig';
+import type {BootstrapScriptDescriptor} from 'react-dom-bindings/src/server/ReactFizzConfigDOM';
 
 import ReactVersion from 'shared/ReactVersion';
 
@@ -22,7 +22,7 @@ import {
 import {
   createResponseState,
   createRootFormatContext,
-} from 'react-dom-bindings/src/server/ReactDOMServerFormatConfig';
+} from 'react-dom-bindings/src/server/ReactFizzConfigDOM';
 
 type Options = {
   identifierPrefix?: string,
@@ -55,7 +55,7 @@ function prerender(
             startFlowing(request, controller);
           },
         },
-        // $FlowFixMe size() methods are not allowed on byte streams.
+        // $FlowFixMe[prop-missing] size() methods are not allowed on byte streams.
         {highWaterMark: 0},
       );
 

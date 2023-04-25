@@ -17,7 +17,7 @@ describe('ReactFlushSync', () => {
     React = require('react');
     ReactNoop = require('react-noop-renderer');
     Scheduler = require('scheduler');
-    act = require('jest-react').act;
+    act = require('internal-test-utils').act;
     useState = React.useState;
     useEffect = React.useEffect;
     startTransition = React.startTransition;
@@ -28,7 +28,7 @@ describe('ReactFlushSync', () => {
   });
 
   function Text({text}) {
-    Scheduler.unstable_yieldValue(text);
+    Scheduler.log(text);
     return text;
   }
 
@@ -49,9 +49,14 @@ describe('ReactFlushSync', () => {
 
     const root = ReactNoop.createRoot();
     await act(async () => {
-      React.startTransition(() => {
+      if (gate(flags => flags.enableSyncDefaultUpdates)) {
+        React.startTransition(() => {
+          root.render(<App />);
+        });
+      } else {
         root.render(<App />);
-      });
+      }
+      // This will yield right before the passive effect fires
       await waitForPaint(['0, 0']);
 
       // The passive effect will schedule a sync update and a normal update.
@@ -67,6 +72,7 @@ describe('ReactFlushSync', () => {
       if (gate(flags => flags.enableUnifiedSyncLane)) {
         await waitForPaint([]);
       } else {
+        // Now flush it.
         await waitForPaint(['1, 1']);
       }
     });
@@ -93,13 +99,13 @@ describe('ReactFlushSync', () => {
     }
 
     const root = ReactNoop.createRoot();
-    await act(async () => {
+    await act(() => {
       root.render(<App />);
     });
     assertLog(['0, 0']);
     expect(root).toMatchRenderedOutput('0, 0');
 
-    await act(async () => {
+    await act(() => {
       ReactNoop.flushSync(() => {
         startTransition(() => {
           // This should be async even though flushSync is on the stack, because
@@ -112,9 +118,11 @@ describe('ReactFlushSync', () => {
           });
         });
       });
+      // Only the sync update should have flushed
       assertLog(['1, 0']);
       expect(root).toMatchRenderedOutput('1, 0');
     });
+    // Now the async update has flushed, too.
     assertLog(['1, 1']);
     expect(root).toMatchRenderedOutput('1, 1');
   });
@@ -122,13 +130,13 @@ describe('ReactFlushSync', () => {
   test('flushes passive effects synchronously when they are the result of a sync render', async () => {
     function App() {
       useEffect(() => {
-        Scheduler.unstable_yieldValue('Effect');
+        Scheduler.log('Effect');
       }, []);
       return <Text text="Child" />;
     }
 
     const root = ReactNoop.createRoot();
-    await act(async () => {
+    await act(() => {
       ReactNoop.flushSync(() => {
         root.render(<App />);
       });
@@ -145,13 +153,13 @@ describe('ReactFlushSync', () => {
   test('do not flush passive effects synchronously after render in legacy mode', async () => {
     function App() {
       useEffect(() => {
-        Scheduler.unstable_yieldValue('Effect');
+        Scheduler.log('Effect');
       }, []);
       return <Text text="Child" />;
     }
 
     const root = ReactNoop.createLegacyRoot();
-    await act(async () => {
+    await act(() => {
       ReactNoop.flushSync(() => {
         root.render(<App />);
       });
@@ -162,6 +170,7 @@ describe('ReactFlushSync', () => {
       ]);
       expect(root).toMatchRenderedOutput('Child');
     });
+    // Effect flushes after paint.
     assertLog(['Effect']);
   });
 
@@ -171,13 +180,13 @@ describe('ReactFlushSync', () => {
     function App({step}) {
       useEffect(() => {
         currentStep = step;
-        Scheduler.unstable_yieldValue('Effect: ' + step);
+        Scheduler.log('Effect: ' + step);
       }, [step]);
       return <Text text={step} />;
     }
 
     const root = ReactNoop.createLegacyRoot();
-    await act(async () => {
+    await act(() => {
       ReactNoop.flushSync(() => {
         root.render(<App step={1} />);
       });
@@ -202,7 +211,7 @@ describe('ReactFlushSync', () => {
   test("do not flush passive effects synchronously when they aren't the result of a sync render", async () => {
     function App() {
       useEffect(() => {
-        Scheduler.unstable_yieldValue('Effect');
+        Scheduler.log('Effect');
       }, []);
       return <Text text="Child" />;
     }
@@ -217,13 +226,14 @@ describe('ReactFlushSync', () => {
       ]);
       expect(root).toMatchRenderedOutput('Child');
     });
+    // Effect flushes after paint.
     assertLog(['Effect']);
   });
 
   test('does not flush pending passive effects', async () => {
     function App() {
       useEffect(() => {
-        Scheduler.unstable_yieldValue('Effect');
+        Scheduler.log('Effect');
       }, []);
       return <Text text="Child" />;
     }
@@ -236,8 +246,56 @@ describe('ReactFlushSync', () => {
 
       // Passive effects are pending. Calling flushSync should not affect them.
       ReactNoop.flushSync();
+      // Effects still haven't fired.
       assertLog([]);
     });
+    // Now the effects have fired.
     assertLog(['Effect']);
+  });
+
+  test('completely exhausts synchronous work queue even if something throws', async () => {
+    function Throws({error}) {
+      throw error;
+    }
+
+    const root1 = ReactNoop.createRoot();
+    const root2 = ReactNoop.createRoot();
+    const root3 = ReactNoop.createRoot();
+
+    await act(async () => {
+      root1.render(<Text text="Hi" />);
+      root2.render(<Text text="Andrew" />);
+      root3.render(<Text text="!" />);
+    });
+    assertLog(['Hi', 'Andrew', '!']);
+
+    const aahh = new Error('AAHH!');
+    const nooo = new Error('Noooooooooo!');
+
+    let error;
+    try {
+      ReactNoop.flushSync(() => {
+        root1.render(<Throws error={aahh} />);
+        root2.render(<Throws error={nooo} />);
+        root3.render(<Text text="aww" />);
+      });
+    } catch (e) {
+      error = e;
+    }
+
+    // The update to root 3 should have finished synchronously, even though the
+    // earlier updates errored.
+    assertLog(['aww']);
+    // Roots 1 and 2 were unmounted.
+    expect(root1).toMatchRenderedOutput(null);
+    expect(root2).toMatchRenderedOutput(null);
+    expect(root3).toMatchRenderedOutput('aww');
+
+    // Because there were multiple errors, React threw an AggregateError.
+    // eslint-disable-next-line no-undef
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error.errors.length).toBe(2);
+    expect(error.errors[0]).toBe(aahh);
+    expect(error.errors[1]).toBe(nooo);
   });
 });
