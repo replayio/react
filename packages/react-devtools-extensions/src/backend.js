@@ -12,7 +12,6 @@ import type {DevToolsHook} from 'react-devtools-shared/src/backend/types';
 import Agent from 'react-devtools-shared/src/backend/agent';
 import Bridge from 'react-devtools-shared/src/bridge';
 import {initBackend} from 'react-devtools-shared/src/backend';
-import setupNativeStyleEditor from 'react-devtools-shared/src/backend/NativeStyleEditor/setupNativeStyleEditor';
 
 import {COMPACT_VERSION_NAME} from './utils';
 
@@ -62,7 +61,7 @@ function setup(hook: ?DevToolsHook) {
     Agent,
     Bridge,
     initBackend,
-    setupNativeStyleEditor,
+    setupNativeStyleEditor: () => {},
   });
   hook.emit('devtools-backend-installed', COMPACT_VERSION_NAME);
 }
