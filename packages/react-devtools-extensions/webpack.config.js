@@ -50,13 +50,13 @@ module.exports = {
   mode: __DEV__ ? 'development' : 'production',
   devtool: __DEV__ ? 'cheap-module-source-map' : false,
   entry: {
-    background: './src/background.js',
-    backendManager: './src/backendManager.js',
-    main: './src/main.js',
-    panel: './src/panel.js',
-    proxy: './src/contentScripts/proxy.js',
-    prepareInjection: './src/contentScripts/prepareInjection.js',
-    renderer: './src/contentScripts/renderer.js',
+    // background: './src/background.js',
+    // backendManager: './src/backendManager.js',
+    // main: './src/main.js',
+    // panel: './src/panel.js',
+    // proxy: './src/contentScripts/proxy.js',
+    // prepareInjection: './src/contentScripts/prepareInjection.js',
+    // renderer: './src/contentScripts/renderer.js',
     installHook: './src/contentScripts/installHook.js',
   },
   output: {
@@ -83,9 +83,6 @@ module.exports = {
       'react-is': resolve(builtModulesDir, 'react-is'),
       scheduler: resolve(builtModulesDir, 'scheduler'),
     },
-  },
-  optimization: {
-    minimize: false,
   },
   plugins: [
     new DefinePlugin({

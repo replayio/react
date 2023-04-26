@@ -92,7 +92,8 @@ import {enableStyleXFeatures} from 'react-devtools-feature-flags';
 import is from 'shared/objectIs';
 import hasOwnProperty from 'shared/hasOwnProperty';
 import {getStyleXData} from './StyleX/utils';
-import {createProfilingHooks} from './profilingHooks';
+// REPLAY Not doing any profiling work for the foreseeable future, disable this
+// import {createProfilingHooks} from './profilingHooks';
 
 import type {GetTimelineData, ToggleProfilingStatus} from './profilingHooks';
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
@@ -643,6 +644,9 @@ export function attach(
 
   let getTimelineData: null | GetTimelineData = null;
   let toggleProfilingStatus: null | ToggleProfilingStatus = null;
+
+  // REPLAY Not doing any profiling work for the foreseeable future, disable this
+  /*
   if (typeof injectProfilingHooks === 'function') {
     const response = createProfilingHooks({
       getDisplayNameForFiber,
@@ -660,6 +664,7 @@ export function attach(
     getTimelineData = response.getTimelineData;
     toggleProfilingStatus = response.toggleProfilingStatus;
   }
+  */
 
   // Tracks Fibers with recently changed number of error/warning messages.
   // These collections store the Fiber rather than the ID,
@@ -4027,6 +4032,9 @@ export function attach(
     );
 
     let timelineData = null;
+
+    // REPLAY Not doing any profiling work for the foreseeable future, disable this
+    /*
     if (typeof getTimelineData === 'function') {
       const currentTimelineData = getTimelineData();
       if (currentTimelineData) {
@@ -4058,6 +4066,7 @@ export function attach(
         };
       }
     }
+    */
 
     return {
       dataForRoots,
