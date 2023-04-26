@@ -2,12 +2,14 @@
 
 import type {BrowserTheme} from 'react-devtools-shared/src/devtools/views/DevTools';
 
-export const IS_EDGE = navigator.userAgent.indexOf('Edg') >= 0;
-export const IS_FIREFOX = navigator.userAgent.indexOf('Firefox') >= 0;
-export const IS_CHROME = IS_EDGE === false && IS_FIREFOX === false;
+// REPLAY Our RDT integration is only for Chrome currently
+export const IS_EDGE = false; // navigator.userAgent.indexOf('Edg') >= 0;
+export const IS_FIREFOX = false; // navigator.userAgent.indexOf('Firefox') >= 0;
+export const IS_CHROME = true; //IS_EDGE === false && IS_FIREFOX === false;
 
 export type BrowserName = 'Chrome' | 'Firefox' | 'Edge';
 
+/*
 export function getBrowserName(): BrowserName {
   if (IS_EDGE) {
     return 'Edge';
@@ -41,6 +43,7 @@ export function getBrowserTheme(): BrowserTheme {
     }
   }
 }
+*/
 
 export const COMPACT_VERSION_NAME = 'compact';
 export const EXTENSION_CONTAINED_VERSIONS = [COMPACT_VERSION_NAME];
