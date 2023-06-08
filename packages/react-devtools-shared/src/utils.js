@@ -141,6 +141,7 @@ export function getDisplayName(
   }
 
   cachedDisplayNames.set(type, displayName);
+  window.allReactComponentDisplayNames.set(type, displayName);
   return displayName;
 }
 
