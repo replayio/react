@@ -144,7 +144,10 @@ const getCurrentTime =
     ? () => performance.now()
     : () => Date.now();
 
-export function getInternalReactConstants(version: string): {
+export function getInternalReactConstants(
+  version: string,
+  getOrGenerateFiberID: (fiber: Fiber) => number,
+): {
   getDisplayNameForFiber: getDisplayNameForFiberType,
   getTypeSymbol: getTypeSymbolType,
   ReactPriorityLevels: ReactPriorityLevelsType,
@@ -420,9 +423,27 @@ export function getInternalReactConstants(version: string): {
     }
   }
 
+  function saveFiberIdToType(fiberId: number, type: Function) {
+    if (window.componentFunctionDetailsPerPoint?.has(type)) {
+      const functionDetails = window.componentFunctionDetailsPerPoint.get(type);
+      functionDetails?.fiberIds.push(fiberId);
+    } else {
+      const functionDetails = {
+        minifiedDisplayName: null,
+        fiberIds: [fiberId],
+      };
+      window.componentFunctionDetailsPerPoint?.set(type, functionDetails);
+    }
+  }
+
   // NOTICE Keep in sync with shouldFilterFiber() and other get*ForFiber methods
   function getDisplayNameForFiber(fiber: Fiber): string | null {
     const {elementType, type, tag} = fiber;
+
+    const fiberId = getOrGenerateFiberID(fiber);
+    if (typeof fiberId === 'undefined') {
+      throw new Error('Could not find fiberId for fiber');
+    }
 
     let resolvedType = type;
     if (typeof type === 'object' && type !== null) {
@@ -436,11 +457,14 @@ export function getInternalReactConstants(version: string): {
         return 'Cache';
       case ClassComponent:
       case IncompleteClassComponent:
+        saveFiberIdToType(fiberId, resolvedType);
         return getDisplayName(resolvedType);
       case FunctionComponent:
       case IndeterminateComponent:
+        saveFiberIdToType(fiberId, resolvedType);
         return getDisplayName(resolvedType);
       case ForwardRef:
+        saveFiberIdToType(fiberId, resolvedType);
         return getWrappedDisplayName(
           elementType,
           resolvedType,
@@ -469,6 +493,7 @@ export function getInternalReactConstants(version: string): {
         return 'Lazy';
       case MemoComponent:
       case SimpleMemoComponent:
+        saveFiberIdToType(fiberId, resolvedType);
         // Display name in React does not use `Memo` as a wrapper but fallback name.
         return getWrappedDisplayName(
           elementType,
@@ -492,6 +517,17 @@ export function getInternalReactConstants(version: string): {
         return 'TracingMarker';
       default:
         const typeSymbol = getTypeSymbol(type);
+
+        if (window.nonComponentFiberTypesPerPoint?.has(type)) {
+          const fiberTypeDetails =
+            window.nonComponentFiberTypesPerPoint.get(type);
+          fiberTypeDetails?.fiberIds.push(fiberId);
+        } else {
+          const fiberTypeDetails = {
+            fiberIds: [fiberId],
+          };
+          window.nonComponentFiberTypesPerPoint?.set(type, fiberTypeDetails);
+        }
 
         switch (typeSymbol) {
           case CONCURRENT_MODE_NUMBER:
@@ -571,7 +607,7 @@ export function attach(
     ReactPriorityLevels,
     ReactTypeOfWork,
     StrictModeBits,
-  } = getInternalReactConstants(version);
+  } = getInternalReactConstants(version, getOrGenerateFiberID);
   const {
     CacheComponent,
     ClassComponent,

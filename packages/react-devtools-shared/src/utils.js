@@ -141,7 +141,18 @@ export function getDisplayName(
   }
 
   cachedDisplayNames.set(type, displayName);
-  window.allReactComponentDisplayNames.set(type, displayName);
+
+  if (window.componentFunctionDetailsPerPoint?.has(type)) {
+    const functionDetails = window.componentFunctionDetailsPerPoint.get(type);
+    functionDetails.minifiedDisplayName = displayName;
+  } else {
+    const functionDetails = {
+      minifiedDisplayName: displayName,
+      fiberIds: [],
+    };
+    window.componentFunctionDetailsPerPoint?.set(type, functionDetails);
+  }
+  // window.allReactComponentDisplayNames?.set(type, displayName);
   return displayName;
 }
 
