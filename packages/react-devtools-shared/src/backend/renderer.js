@@ -1129,31 +1129,32 @@ export function attach(
 
   function getReplayFiberID(fiber: Fiber) {
     const id = getReplayPersistentID(fiber);
-    if (!fiber.alternate) {
+
+    let alternateFiber;
+    if (fiber.alternate) {
+      // There may be an older version of the fiber, already attached
+      alternateFiber = fiber.alternate;
+    } else if (window.unmountedFiberAlternates?.has(fiber)) {
+      // Or, React may have already deleted the older fiber as part of cleanup,
+      // but we stashed it away in the `onCommitFiberUnmount` callback before
+      // React actually deleted it. Look it up as provided by the eval wrapper.
+      alternateFiber = window.unmountedFiberAlternates.get(fiber);
+    }
+
+    if (!alternateFiber) {
       return id;
     }
-    const alternateId = getReplayPersistentID(fiber.alternate);
+
+    // Our IDs are numeric, so older fibers will have a lower ID.
+    // Prefer the older fiber's ID if it exists.
+    const alternateId = getReplayPersistentID(alternateFiber);
     return Math.min(id, alternateId);
   }
 
   // Returns the unique ID for a Fiber or generates and caches a new one if the Fiber hasn't been seen before.
   // Once this method has been called for a Fiber, untrackFiberID() should always be called later to avoid leaking.
   function getOrGenerateFiberID(fiber: Fiber): number {
-    let id = null;
-    if (fiberToIDMap.has(fiber)) {
-      id = fiberToIDMap.get(fiber);
-    } else {
-      const {alternate} = fiber;
-      if (alternate !== null && fiberToIDMap.has(alternate)) {
-        id = fiberToIDMap.get(alternate);
-      }
-    }
-
-    let didGenerateID = false;
-    if (id === null) {
-      didGenerateID = true;
-      id = getReplayFiberID(fiber);
-    }
+    const id = getReplayFiberID(fiber);
 
     // This refinement is for Flow purposes only.
     const refinedID = ((id: any): number);
@@ -1171,17 +1172,6 @@ export function attach(
     if (alternate !== null) {
       if (!fiberToIDMap.has(alternate)) {
         fiberToIDMap.set(alternate, refinedID);
-      }
-    }
-
-    if (__DEBUG__) {
-      if (didGenerateID) {
-        debug(
-          'getOrGenerateFiberID()',
-          fiber,
-          fiber.return,
-          'Generated a new UID',
-        );
       }
     }
 
@@ -2021,7 +2011,7 @@ export function attach(
       }
     }
 
-    const persistentID = getReplayFiberID(fiber);
+    const persistentID = getFiberIDUnsafe(fiber);
     const unsafeID = persistentID;
     if (unsafeID === null) {
       // If we've never seen this Fiber, it might be inside of a legacy render Suspense fragment (so the store is not even aware of it).
@@ -4521,6 +4511,7 @@ export function attach(
     getDisplayNameForFiberID,
     getFiberForNative,
     getFiberIDForNative,
+    getFiberIDUnsafe,
     getInstanceAndStyle,
     getOrGenerateFiberID,
     getOwnersList,
