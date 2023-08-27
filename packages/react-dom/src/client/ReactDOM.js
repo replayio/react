@@ -197,12 +197,14 @@ function flushSync(fn) {
   return flushSyncWithoutWarningIfAlreadyRendering(fn);
 }
 
+const actualVersion = '18.2.0-next-9e3b772b8-20220608';
+
 export {
   createPortal,
   batchedUpdates as unstable_batchedUpdates,
   flushSync,
   Internals as __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED,
-  ReactVersion as version,
+  actualVersion as version,
   // Disabled behind disableLegacyReactDOMAPIs
   findDOMNode,
   hydrate,
