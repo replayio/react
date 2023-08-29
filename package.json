@@ -149,5 +149,9 @@
   },
   "resolutions": {
     "react-is": "npm:react-is"
+  },
+  "dependencies": {
+    "@ampproject/remapping": "^2.2.1",
+    "magic-string": "^0.30.3"
   }
 }
