@@ -12,6 +12,8 @@ const path = require('path');
 const resolve = require('rollup-plugin-node-resolve');
 const fs = require('fs');
 const argv = require('minimist')(process.argv.slice(2));
+const MagicString = require('magic-string');
+const remapping = require('@ampproject/remapping');
 const Modules = require('./modules');
 const Bundles = require('./bundles');
 const Stats = require('./stats');
@@ -24,6 +26,17 @@ const Packaging = require('./packaging');
 const {asyncRimRaf} = require('./utils');
 const codeFrame = require('babel-code-frame');
 const Wrappers = require('./wrappers');
+const util = require('util');
+
+function inspectDeep(value, depth = 10) {
+  return util.inspect(value, {
+    depth,
+    colors: true,
+    maxArrayLength: 20,
+    maxStringLength: 100,
+    breakLength: 120,
+  });
+}
 
 const RELEASE_CHANNEL = process.env.RELEASE_CHANNEL;
 
@@ -158,6 +171,7 @@ function getBabelConfig(
     configFile: false,
     presets: [],
     plugins: [...babelPlugins],
+    sourcemap: false,
   };
   if (isDevelopment) {
     options.plugins.push(
@@ -312,6 +326,45 @@ function isProfilingBundleType(bundleType) {
   }
 }
 
+function getBundleTypeFlags(bundleType) {
+  const isUMDBundle =
+    bundleType === UMD_DEV ||
+    bundleType === UMD_PROD ||
+    bundleType === UMD_PROFILING;
+  const isFBWWWBundle =
+    bundleType === FB_WWW_DEV ||
+    bundleType === FB_WWW_PROD ||
+    bundleType === FB_WWW_PROFILING;
+  const isRNBundle =
+    bundleType === RN_OSS_DEV ||
+    bundleType === RN_OSS_PROD ||
+    bundleType === RN_OSS_PROFILING ||
+    bundleType === RN_FB_DEV ||
+    bundleType === RN_FB_PROD ||
+    bundleType === RN_FB_PROFILING;
+
+  const isFBRNBundle =
+    bundleType === RN_FB_DEV ||
+    bundleType === RN_FB_PROD ||
+    bundleType === RN_FB_PROFILING;
+
+  const shouldStayReadable = isFBWWWBundle || isRNBundle || forcePrettyOutput;
+
+  const shouldBundleDependencies =
+    bundleType === UMD_DEV ||
+    bundleType === UMD_PROD ||
+    bundleType === UMD_PROFILING;
+
+  return {
+    isUMDBundle,
+    isFBWWWBundle,
+    isRNBundle,
+    isFBRNBundle,
+    shouldBundleDependencies,
+    shouldStayReadable,
+  };
+}
+
 function forbidFBJSImports() {
   return {
     name: 'forbidFBJSImports',
@@ -342,22 +395,23 @@ function getPlugins(
   const forks = Modules.getForks(bundleType, entry, moduleType, bundle);
   const isProduction = isProductionBundleType(bundleType);
   const isProfiling = isProfilingBundleType(bundleType);
-  const isUMDBundle =
-    bundleType === UMD_DEV ||
-    bundleType === UMD_PROD ||
-    bundleType === UMD_PROFILING;
-  const isFBWWWBundle =
-    bundleType === FB_WWW_DEV ||
-    bundleType === FB_WWW_PROD ||
-    bundleType === FB_WWW_PROFILING;
-  const isRNBundle =
-    bundleType === RN_OSS_DEV ||
-    bundleType === RN_OSS_PROD ||
-    bundleType === RN_OSS_PROFILING ||
-    bundleType === RN_FB_DEV ||
-    bundleType === RN_FB_PROD ||
-    bundleType === RN_FB_PROFILING;
-  const shouldStayReadable = isFBWWWBundle || isRNBundle || forcePrettyOutput;
+  const {isUMDBundle, shouldStayReadable} = getBundleTypeFlags(bundleType);
+
+  const needsMinifiedByClosure = isProduction; // && bundleType !== ESM_PROD;
+
+  // Only generate sourcemaps for true "production" build artifacts
+  // that will be used by bundlers, such as `react-dom.production.min.js`.
+  // UMD and "profiling" builds are rarely used and not worth having sourcemaps.
+  const needsSourcemaps =
+    needsMinifiedByClosure &&
+    !isProfiling &&
+    !isUMDBundle &&
+    !shouldStayReadable;
+
+  // For builds with sourcemaps, capture the minified code Closure generated
+  // so it can be used to help construct the final sourcemap contents.
+  let chunkCodeAfterClosureCompiler = undefined;
+
   return [
     // Extract error codes from invariant() messages into a file.
     shouldExtractErrors && {
@@ -390,6 +444,7 @@ function getPlugins(
     ),
     // Remove 'use strict' from individual source files.
     {
+      name: "remove 'use strict'",
       transform(source) {
         return source.replace(/['"]use strict["']/g, '');
       },
@@ -410,15 +465,23 @@ function getPlugins(
     // Please don't enable this for anything else!
     isUMDBundle && entry === 'react-art' && commonjs(),
     // Apply dead code elimination and/or minification.
-    isProduction &&
+    needsMinifiedByClosure &&
       closure(
         Object.assign({}, closureOptions, {
           // Don't let it create global variables in the browser.
           // https://github.com/facebook/react/issues/10909
           assume_function_wrapper: !isUMDBundle,
           renaming: !shouldStayReadable,
-        })
+        }),
+        {needsSourcemaps}
       ),
+    needsSourcemaps && {
+      name: 'chunk-after-closure',
+      renderChunk(code, config, options) {
+        // Side effect - grab the code as Closure mangled it
+        chunkCodeAfterClosureCompiler = code;
+      },
+    },
     // HACK to work around the fact that Rollup isn't removing unused, pure-module imports.
     // Note that this plugin must be called after closure applies DCE.
     isProduction && stripUnusedImports(pureExternalModules),
@@ -439,6 +502,72 @@ function getPlugins(
           globalName,
           filename,
           moduleType
+        );
+      },
+    },
+    needsSourcemaps && {
+      name: 'generate-prod-bundle-sourcemaps',
+      async renderChunk(codeAfterLicense, chunk, options, meta) {
+        // We want to generate a sourcemap that shows the production bundle source
+        // as it existed before Closure Compiler minified that chunk.
+        // We also need to apply any license/wrapper text adjustments to that
+        // sourcemap, so that the mapped locations line up correctly.
+
+        // We can split the final chunk code to figure out what got added around
+        // the code from the Closure step.
+        const [licensePrefix, licensePostfix] = codeAfterLicense.split(
+          chunkCodeAfterClosureCompiler
+        );
+
+        console.log('Prefix: ', licensePrefix?.slice(0, 100));
+        console.log('Postfix: ', licensePostfix?.slice(0, 100));
+
+        const transformedSource = new MagicString(
+          chunkCodeAfterClosureCompiler
+        );
+
+        // Apply changes so we can generate a sourcemap for this step
+        if (licensePrefix) {
+          transformedSource.prepend(licensePrefix);
+        }
+
+        if (licensePostfix) {
+          transformedSource.append(licensePostfix);
+        }
+
+        // Use a path like `node_modules/react/cjs/react.production.min.js.map` for the sourcemap file
+        const finalSourcemapPath = options.file.replace('.js', '.js.map');
+
+        // Read the sourcemap that Closure wrote to disk
+        const sourcemapAfterClosure = JSON.parse(
+          fs.readFileSync(finalSourcemapPath, 'utf8')
+        );
+
+        const filenameWithoutMin = filename.replace('.min', '');
+
+        // CC generated a file list that only contains the tempfile name.
+        // Replace that with a more meaningful "source" name for this bundle.
+        sourcemapAfterClosure.sources = [filenameWithoutMin];
+        sourcemapAfterClosure.file = filename;
+
+        // Create an additional sourcemap adjusted for the license header contents
+        const mapAfterLicense = transformedSource.generateMap({
+          file: filename,
+          includeContent: true,
+          hires: true,
+        });
+
+        // Merge the Closure sourcemap and the with-license sourcemap together
+        const finalCombinedSourcemap = remapping(
+          [mapAfterLicense, sourcemapAfterClosure],
+          () => null,
+          {excludeContent: false}
+        );
+
+        // Overwrite the Closure-generated file with the final combined sourcemap
+        fs.writeFileSync(
+          finalSourcemapPath,
+          JSON.stringify(finalCombinedSourcemap)
         );
       },
     },
