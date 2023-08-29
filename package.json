@@ -134,5 +134,9 @@
     "merge-fork": "node ./scripts/merge-fork/merge-fork.js",
     "replace-fork": "node ./scripts/merge-fork/replace-fork.js"
   },
-  "version": "17.0.2"
+  "version": "17.0.2",
+  "dependencies": {
+    "@ampproject/remapping": "^2.2.1",
+    "magic-string": "^0.30.3"
+  }
 }
