@@ -3,7 +3,10 @@
   "version": "4.28.3",
   "description": "Embed react-devtools within a website",
   "license": "MIT",
-  "private": false,
+  "private": false,  
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/backend.js",
   "repository": {
     "type": "git",
