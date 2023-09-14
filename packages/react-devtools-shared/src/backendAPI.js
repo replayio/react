@@ -138,7 +138,8 @@ export function storeAsGlobal({
   });
 }
 
-const TIMEOUT_DELAY = 5000;
+// REPLAY Bumping this up from 5000 to allow evaluations time to complete.
+const TIMEOUT_DELAY = 15000;
 
 let requestCounter = 0;
 

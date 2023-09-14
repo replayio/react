@@ -217,12 +217,7 @@ export default function Tree(props: Props): React.Node {
   const handleFocus = useCallback(() => {
     setTreeFocused(true);
 
-    if (selectedElementIndex === null && numElements > 0) {
-      dispatch({
-        type: 'SELECT_ELEMENT_AT_INDEX',
-        payload: 0,
-      });
-    }
+    // REPLAY Removed auto-selection of index 0, as that creates annoying behavior in our UI
   }, [dispatch, numElements, selectedElementIndex]);
 
   const handleKeyPress = useCallback(
