@@ -1,9 +1,9 @@
 {
   "name": "@replayio/react-devtools-inline",
-  "version": "4.28.3",
+  "version": "4.28.4",
   "description": "Embed react-devtools within a website",
   "license": "MIT",
-  "private": false,  
+  "private": false,
   "publishConfig": {
     "access": "public"
   },
