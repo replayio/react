@@ -12,8 +12,6 @@ import {Component, Suspense} from 'react';
 import Store from 'react-devtools-shared/src/devtools/store';
 import UnsupportedBridgeOperationView from './UnsupportedBridgeOperationView';
 import ErrorView from './ErrorView';
-import SearchingGitHubIssues from './SearchingGitHubIssues';
-import SuspendingErrorView from './SuspendingErrorView';
 import TimeoutView from './TimeoutView';
 import CaughtErrorView from './CaughtErrorView';
 import UnsupportedBridgeOperationError from 'react-devtools-shared/src/UnsupportedBridgeOperationError';
@@ -191,13 +189,19 @@ export default class ErrorBoundary extends Component<Props, State> {
               canDismissProp || canDismissState ? this._dismissError : null
             }
             errorMessage={errorMessage}>
-            <Suspense fallback={<SearchingGitHubIssues />}>
-              <SuspendingErrorView
-                callStack={callStack}
-                componentStack={componentStack}
-                errorMessage={errorMessage}
-              />
-            </Suspense>
+            We caught an error. Please report this to the Replay team via:
+            <ul>
+              <li>
+                Discord:{' '}
+                <a href="https://replay.io/discord">replay.io/discord</a>
+              </li>
+              <li>
+                Github:{' '}
+                <a href="https://github.com/replayio/devtools">
+                  github.com/replayio/devtools
+                </a>
+              </li>
+            </ul>
           </ErrorView>
         );
       }
