@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "after:bump": "yarn && git add -u"
+  },
+  "git": {
+    "commitMessage": "Release @replayio/react-devtools-inline ${version}",
+    "tagName": "@replayio/react-devtools-inline@${version}"
+  },
+  "npm": {
+    "versionArgs": ["--workspaces-update=false"]
+  }
+}
