@@ -365,14 +365,12 @@ function getPlugins(
 
   const needsMinifiedByClosure = isProduction; // && bundleType !== ESM_PROD;
 
-  // Only generate sourcemaps for true "production" build artifacts
+  // Generate sourcemaps for true "production" build artifacts
   // that will be used by bundlers, such as `react-dom.production.min.js`.
-  // UMD and "profiling" builds are rarely used and not worth having sourcemaps.
+  // UMD builds are rarely used and not worth having sourcemaps.
+  // _Do_ include profiling builds - tools like Sentry can use those.
   const needsSourcemaps =
-    needsMinifiedByClosure &&
-    !isProfiling &&
-    !isUMDBundle &&
-    !shouldStayReadable;
+    needsMinifiedByClosure && !isUMDBundle && !shouldStayReadable;
 
   // For builds with sourcemaps, capture the minified code Closure generated
   // so it can be used to help construct the final sourcemap contents.
@@ -479,9 +477,6 @@ function getPlugins(
         const [licensePrefix, licensePostfix] = codeAfterLicense.split(
           chunkCodeAfterClosureCompiler
         );
-
-        console.log('Prefix: ', licensePrefix?.slice(0, 100));
-        console.log('Postfix: ', licensePostfix?.slice(0, 100));
 
         const transformedSource = new MagicString(
           chunkCodeAfterClosureCompiler
