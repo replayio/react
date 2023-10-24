@@ -3698,6 +3698,45 @@ export function attach(
     // This will enable us to send patches without re-inspecting if hydrated paths are requested.
     // (Reducing how often we shallow-render is a better DX for function components that use hooks.)
     const cleanedInspectedElement = {...mostRecentlyInspectedElement};
+
+    // [FE-1885] Note that the internal.registerPlainObject API is only available for newer Replay Chromium builds.
+    const getObjectId = object => {
+      if (
+        __RECORD_REPLAY_ARGUMENTS__ &&
+        __RECORD_REPLAY_ARGUMENTS__.internal &&
+        __RECORD_REPLAY_ARGUMENTS__.internal.registerPlainObject
+      ) {
+        try {
+          return __RECORD_REPLAY_ARGUMENTS__.internal.registerPlainObject(
+            object,
+          );
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      return null;
+    };
+
+    // [FE-1885] React DevTools uses a bespoke format for inspecting props/state/hooks data;
+    // Replay's React DevTools fork uses the Replay Inspector (and the Replay object preview format)
+    // For the time being, the backend needs to support both,
+    // but eventually we can remove a lot of this info from the inspected element payload.
+    cleanedInspectedElement.contextObjectId = cleanedInspectedElement.context
+      ? getObjectId(cleanedInspectedElement.context)
+      : null;
+    cleanedInspectedElement.hooksObjectId = cleanedInspectedElement.hooks
+      ? getObjectId(cleanedInspectedElement.hooks)
+      : null;
+    cleanedInspectedElement.propsObjectId = cleanedInspectedElement.props
+      ? getObjectId(cleanedInspectedElement.props)
+      : null;
+    cleanedInspectedElement.stateObjectId = cleanedInspectedElement.state
+      ? getObjectId(cleanedInspectedElement.state)
+      : null;
+    cleanedInspectedElement.typeObjectId = cleanedInspectedElement.canViewSource
+      ? getObjectId(findCurrentFiberUsingSlowPathById(id).type)
+      : null;
+
     // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.context = cleanForBridge(
       cleanedInspectedElement.context,
