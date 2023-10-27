@@ -426,7 +426,9 @@ export function getInternalReactConstants(
   function saveFiberIdToType(fiberId: number, type: Function) {
     if (window.componentFunctionDetailsPerPoint?.has(type)) {
       const functionDetails = window.componentFunctionDetailsPerPoint.get(type);
-      functionDetails?.fiberIds.push(fiberId);
+      if (!functionDetails?.fiberIds.includes(fiberId)) {
+        functionDetails?.fiberIds?.push(fiberId);
+      }
     } else {
       const functionDetails = {
         minifiedDisplayName: null,
@@ -519,9 +521,12 @@ export function getInternalReactConstants(
         const typeSymbol = getTypeSymbol(type);
 
         if (window.nonComponentFiberTypesPerPoint?.has(type)) {
-          const fiberTypeDetails =
-            window.nonComponentFiberTypesPerPoint.get(type);
-          fiberTypeDetails?.fiberIds.push(fiberId);
+          const fiberTypeDetails = window.nonComponentFiberTypesPerPoint.get(
+            type,
+          );
+          if (!fiberTypeDetails?.fiberIds.includes(fiberId)) {
+            fiberTypeDetails?.fiberIds.push(fiberId);
+          }
         } else {
           const fiberTypeDetails = {
             fiberIds: [fiberId],
