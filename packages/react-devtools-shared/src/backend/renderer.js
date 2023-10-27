@@ -1940,6 +1940,7 @@ export function attach(
       pushOperation(profilingFlags);
       pushOperation(StrictModeBits !== 0 ? 1 : 0);
       pushOperation(hasOwnerMetadata ? 1 : 0);
+      window?.fibersAddedThisCommit?.add(fiber);
 
       if (isProfiling) {
         if (displayNamesByRootID !== null) {
@@ -1951,6 +1952,8 @@ export function attach(
       const displayName = getDisplayNameForFiber(fiber);
       const elementType = getElementTypeForFiber(fiber);
       const {_debugOwner} = fiber;
+
+      window?.fibersAddedThisCommit?.add(fiber);
 
       // Ideally we should call getFiberIDThrows() for _debugOwner,
       // since owners are almost always higher in the tree (and so have already been processed),
