@@ -426,7 +426,9 @@ export function getInternalReactConstants(
   function saveFiberIdToType(fiberId: number, type: Function) {
     if (window.componentFunctionDetailsPerPoint?.has(type)) {
       const functionDetails = window.componentFunctionDetailsPerPoint.get(type);
-      functionDetails?.fiberIds.push(fiberId);
+      if (!functionDetails?.fiberIds.includes(fiberId)) {
+        functionDetails?.fiberIds?.push(fiberId);
+      }
     } else {
       const functionDetails = {
         minifiedDisplayName: null,
@@ -519,9 +521,12 @@ export function getInternalReactConstants(
         const typeSymbol = getTypeSymbol(type);
 
         if (window.nonComponentFiberTypesPerPoint?.has(type)) {
-          const fiberTypeDetails =
-            window.nonComponentFiberTypesPerPoint.get(type);
-          fiberTypeDetails?.fiberIds.push(fiberId);
+          const fiberTypeDetails = window.nonComponentFiberTypesPerPoint.get(
+            type,
+          );
+          if (!fiberTypeDetails?.fiberIds.includes(fiberId)) {
+            fiberTypeDetails?.fiberIds.push(fiberId);
+          }
         } else {
           const fiberTypeDetails = {
             fiberIds: [fiberId],
@@ -1935,6 +1940,7 @@ export function attach(
       pushOperation(profilingFlags);
       pushOperation(StrictModeBits !== 0 ? 1 : 0);
       pushOperation(hasOwnerMetadata ? 1 : 0);
+      window?.fibersAddedThisCommit?.add(fiber);
 
       if (isProfiling) {
         if (displayNamesByRootID !== null) {
@@ -1946,6 +1952,8 @@ export function attach(
       const displayName = getDisplayNameForFiber(fiber);
       const elementType = getElementTypeForFiber(fiber);
       const {_debugOwner} = fiber;
+
+      window?.fibersAddedThisCommit?.add(fiber);
 
       // Ideally we should call getFiberIDThrows() for _debugOwner,
       // since owners are almost always higher in the tree (and so have already been processed),
@@ -4574,6 +4582,7 @@ export function attach(
     setRootPseudoKey,
     setTraceUpdatesEnabled,
     setTrackedPath,
+    shouldFilterFiber,
     startProfiling,
     shouldFilterFiber,
     stopProfiling,
