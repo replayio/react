@@ -424,6 +424,7 @@ export function getInternalReactConstants(
   }
 
   function saveFiberIdToType(fiberId: number, type: Function) {
+    // REPLAY Save references to component functions
     if (window.componentFunctionDetailsPerPoint?.has(type)) {
       const functionDetails = window.componentFunctionDetailsPerPoint.get(type);
       if (!functionDetails?.fiberIds.includes(fiberId)) {
@@ -520,6 +521,7 @@ export function getInternalReactConstants(
       default:
         const typeSymbol = getTypeSymbol(type);
 
+        // REPLAY Save references to non-component types
         if (window.nonComponentFiberTypesPerPoint?.has(type)) {
           const fiberTypeDetails = window.nonComponentFiberTypesPerPoint.get(
             type,
@@ -1132,6 +1134,7 @@ export function attach(
     return id;
   }
 
+  // REPLAY Use persistent IDs to determine fiber IDs
   function getReplayFiberID(fiber: Fiber) {
     const id = getReplayPersistentID(fiber);
 
@@ -1932,6 +1935,10 @@ export function attach(
       }
     }
 
+    // REPLAY Save fiber IDs that were added, for use in the component commit timeline
+    // Already limited to fibers that should be included
+    window.fiberIdsAddedThisCommit?.add(id);
+
     if (isRoot) {
       pushOperation(TREE_OPERATION_ADD);
       pushOperation(id);
@@ -1940,7 +1947,6 @@ export function attach(
       pushOperation(profilingFlags);
       pushOperation(StrictModeBits !== 0 ? 1 : 0);
       pushOperation(hasOwnerMetadata ? 1 : 0);
-      window?.fibersAddedThisCommit?.add(fiber);
 
       if (isProfiling) {
         if (displayNamesByRootID !== null) {
@@ -1952,8 +1958,6 @@ export function attach(
       const displayName = getDisplayNameForFiber(fiber);
       const elementType = getElementTypeForFiber(fiber);
       const {_debugOwner} = fiber;
-
-      window?.fibersAddedThisCommit?.add(fiber);
 
       // Ideally we should call getFiberIDThrows() for _debugOwner,
       // since owners are almost always higher in the tree (and so have already been processed),
@@ -2337,6 +2341,8 @@ export function attach(
       debug('updateFiberRecursively()', nextFiber, parentFiber);
     }
 
+    const fiberRendered = didFiberRender(prevFiber, nextFiber);
+
     if (traceUpdatesEnabled) {
       const elementType = getElementTypeForFiber(nextFiber);
       if (traceNearestHostComponentUpdate) {
@@ -2354,10 +2360,7 @@ export function attach(
           elementType === ElementTypeForwardRef
         ) {
           // Otherwise if this is a traced ancestor, flag for the nearest host descendant(s).
-          traceNearestHostComponentUpdate = didFiberRender(
-            prevFiber,
-            nextFiber,
-          );
+          traceNearestHostComponentUpdate = fiberRendered;
         }
       }
     }
@@ -2365,7 +2368,7 @@ export function attach(
     if (
       mostRecentlyInspectedElement !== null &&
       mostRecentlyInspectedElement.id === id &&
-      didFiberRender(prevFiber, nextFiber)
+      fiberRenderered
     ) {
       // If this Fiber has updated, clear cached inspected data.
       // If it is inspected again, it may need to be re-run to obtain updated hooks values.
@@ -2373,6 +2376,12 @@ export function attach(
     }
 
     const shouldIncludeInTree = !shouldFilterFiber(nextFiber);
+
+    // REPLAY Save fiber IDs that were updated, for use in the component commit timeline
+    if (fiberRendered && shouldIncludeInTree) {
+      window.fiberIdsUpdatedThisCommit?.add(id);
+    }
+
     const isSuspense = nextFiber.tag === SuspenseComponent;
     let shouldResetChildren = false;
     // The behavior of timed-out Suspense trees is unique.
