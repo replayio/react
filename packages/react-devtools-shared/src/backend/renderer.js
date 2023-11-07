@@ -1131,9 +1131,7 @@ export function attach(
   function getReplayPersistentID(fiber: Fiber) {
     const id = __RECORD_REPLAY_ARGUMENTS__.getPersistentId(fiber);
     if (id == null) {
-      const name = getDisplayNameForFiber(fiber) ?? '(Unknown)';
-
-      throw new Error(`Missing persistent ID for fiber ${name}`);
+      throw new Error('Missing persistent ID for fiber');
     }
     return id;
   }
