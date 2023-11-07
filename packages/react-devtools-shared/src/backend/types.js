@@ -296,6 +296,17 @@ export type InspectedElement = {
 
   // UI plugins/visualizations for the inspected element.
   plugins: Plugins,
+
+  // Replay custom attributes
+  changedContextKeys?: string[],
+  changedHooksIds?: number[],
+  changedPropsKeys?: string[],
+  changedStateKeys?: string[],
+  contextObjectId?: number | null,
+  hooksObjectId?: number | null,
+  propsObjectId?: number | null,
+  stateObjectId?: number | null,
+  typeObjectId?: number | null,
 };
 
 export const InspectElementErrorType = 'error';

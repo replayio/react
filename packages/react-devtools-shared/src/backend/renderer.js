@@ -60,7 +60,7 @@ import {
   TREE_OPERATION_UPDATE_ERRORS_OR_WARNINGS,
   TREE_OPERATION_UPDATE_TREE_BASE_DURATION,
 } from '../constants';
-import {inspectHooksOfFiber} from 'react-debug-tools';
+import {HooksNode, inspectHooksOfFiber} from 'react-debug-tools';
 import {
   patchConsoleUsingWindowValues,
   registerRenderer as registerRendererWithConsole,
@@ -130,6 +130,13 @@ type ReactPriorityLevelsType = {
   LowPriority: number,
   IdlePriority: number,
   NoPriority: number,
+};
+
+declare var __RECORD_REPLAY_ARGUMENTS__: {
+  getPersistentId: (value: any) => number | null | void,
+  internal?: {
+    registerPlainObject: (value: any) => number | null | void,
+  },
 };
 
 function getFiberFlags(fiber: Fiber): number {
@@ -521,9 +528,8 @@ export function getInternalReactConstants(
         const typeSymbol = getTypeSymbol(type);
 
         if (window.nonComponentFiberTypesPerPoint?.has(type)) {
-          const fiberTypeDetails = window.nonComponentFiberTypesPerPoint.get(
-            type,
-          );
+          const fiberTypeDetails =
+            window.nonComponentFiberTypesPerPoint.get(type);
           if (!fiberTypeDetails?.fiberIds.includes(fiberId)) {
             fiberTypeDetails?.fiberIds.push(fiberId);
           }
@@ -1122,12 +1128,12 @@ export function attach(
   // When a mount or update is in progress, this value tracks the root that is being operated on.
   let currentRootID: number = -1;
 
-  function getReplayPersistentID(obj: Fiber) {
-    const id = __RECORD_REPLAY_ARGUMENTS__.getPersistentId(obj);
-    if (!id) {
-      throw new Error(
-        `Missing persistent ID for fiber ${obj} ${obj.constructor}`,
-      );
+  function getReplayPersistentID(fiber: Fiber) {
+    const id = __RECORD_REPLAY_ARGUMENTS__.getPersistentId(fiber);
+    if (id == null) {
+      const name = getDisplayNameForFiber(fiber) ?? '(Unknown)';
+
+      throw new Error(`Missing persistent ID for fiber ${name}`);
     }
     return id;
   }
@@ -3705,10 +3711,12 @@ export function attach(
     // Clone before cleaning so that we preserve the full data.
     // This will enable us to send patches without re-inspecting if hydrated paths are requested.
     // (Reducing how often we shallow-render is a better DX for function components that use hooks.)
-    const cleanedInspectedElement = {...mostRecentlyInspectedElement};
+    const cleanedInspectedElement: InspectedElement = {
+      ...((mostRecentlyInspectedElement: any): InspectedElement),
+    };
 
     // [FE-1885] Note that the internal.registerPlainObject API is only available for newer Replay Chromium builds.
-    const getObjectId = object => {
+    const getObjectId = (object: Object) => {
       if (
         __RECORD_REPLAY_ARGUMENTS__ &&
         __RECORD_REPLAY_ARGUMENTS__.internal &&
@@ -3729,6 +3737,10 @@ export function attach(
     // Replay's React DevTools fork uses the Replay Inspector (and the Replay object preview format)
     // For the time being, the backend needs to support both,
     // but eventually we can remove a lot of this info from the inspected element payload.
+    const fiber = findCurrentFiberUsingSlowPathById(id);
+    if (fiber == null) {
+      throw Error('Unexpected null');
+    }
     cleanedInspectedElement.contextObjectId = cleanedInspectedElement.context
       ? getObjectId(cleanedInspectedElement.context)
       : null;
@@ -3742,25 +3754,70 @@ export function attach(
       ? getObjectId(cleanedInspectedElement.state)
       : null;
     cleanedInspectedElement.typeObjectId = cleanedInspectedElement.canViewSource
-      ? getObjectId(findCurrentFiberUsingSlowPathById(id).type)
+      ? getObjectId(fiber.type)
       : null;
 
-    // $FlowFixMe[prop-missing] found when upgrading Flow
+    // [FE-2011] Highlight which hooks changed between renders.
+    const getChangedHooksHelper = (): number[] => {
+      const prevFiber = fiber.alternate;
+      if (prevFiber !== null) {
+        const indices = getChangedHooksIndices(
+          prevFiber.memoizedState,
+          fiber.memoizedState,
+        );
+        return indices == null || indices.length == 0 ? [] : indices;
+      }
+      return [];
+    };
+
+    // [FE-2011] Highlight which values changed between renders.
+    const getChangedKeysHelper = (
+      type: 'context' | 'props' | 'state',
+    ): string[] => {
+      const prevFiber = fiber.alternate;
+      if (prevFiber != null) {
+        switch (type) {
+          case 'context': {
+            const result = getContextChangedKeys(fiber);
+            if (Array.isArray(result)) {
+              return result;
+            }
+            break;
+          }
+          case 'props': {
+            return (
+              getChangedKeys(prevFiber.memoizedProps, fiber.memoizedProps) ?? []
+            );
+          }
+          case 'state': {
+            return (
+              getChangedKeys(prevFiber.memoizedState, fiber.memoizedState) ?? []
+            );
+          }
+        }
+      }
+
+      return [];
+    };
+
+    cleanedInspectedElement.changedContextKeys =
+      getChangedKeysHelper('context');
+    cleanedInspectedElement.changedHooksIds = getChangedHooksHelper();
+    cleanedInspectedElement.changedPropsKeys = getChangedKeysHelper('props');
+    cleanedInspectedElement.changedStateKeys = getChangedKeysHelper('state');
+
     cleanedInspectedElement.context = cleanForBridge(
       cleanedInspectedElement.context,
       createIsPathAllowed('context', null),
     );
-    // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.hooks = cleanForBridge(
       cleanedInspectedElement.hooks,
       createIsPathAllowed('hooks', 'hooks'),
     );
-    // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.props = cleanForBridge(
       cleanedInspectedElement.props,
       createIsPathAllowed('props', null),
     );
-    // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.state = cleanForBridge(
       cleanedInspectedElement.state,
       createIsPathAllowed('state', null),
@@ -4104,7 +4161,7 @@ export function attach(
       },
     );
 
-    let timelineData = null;
+    let timelineData: null = null;
 
     // REPLAY Not doing any profiling work for the foreseeable future, disable this
     /*
