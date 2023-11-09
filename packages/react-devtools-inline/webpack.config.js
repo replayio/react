@@ -40,6 +40,7 @@ module.exports = {
     backend: './src/backend.js',
     frontend: './src/frontend.js',
     hookNames: './src/hookNames.js',
+    replay: './src/replay.js'
   },
   output: {
     path: __dirname + '/dist',
