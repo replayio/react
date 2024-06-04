@@ -26,7 +26,7 @@ export function getBrowserName(): BrowserName {
 }
 
 export function getBrowserTheme(): BrowserTheme {
-  if (IS_CHROME) {
+  if (__IS_CHROME__) {
     // chrome.devtools.panels added in Chrome 18.
     // chrome.devtools.panels.themeName added in Chrome 54.
     return chrome.devtools.panels.themeName === 'dark' ? 'dark' : 'light';

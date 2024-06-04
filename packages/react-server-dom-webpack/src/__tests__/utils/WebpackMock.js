@@ -11,11 +11,16 @@ const url = require('url');
 const Module = require('module');
 
 let webpackModuleIdx = 0;
+let webpackChunkIdx = 0;
 const webpackServerModules = {};
 const webpackClientModules = {};
 const webpackErroredModules = {};
 const webpackServerMap = {};
 const webpackClientMap = {};
+const webpackChunkMap = {};
+global.__webpack_chunk_load__ = function (id) {
+  return webpackChunkMap[id];
+};
 global.__webpack_require__ = function (id) {
   if (webpackErroredModules[id]) {
     throw webpackErroredModules[id];
@@ -42,6 +47,9 @@ Module.prototype._compile = previousCompile;
 exports.webpackMap = webpackClientMap;
 exports.webpackModules = webpackClientModules;
 exports.webpackServerMap = webpackServerMap;
+exports.moduleLoading = {
+  prefix: '/',
+};
 
 exports.clientModuleError = function clientModuleError(moduleError) {
   const idx = '' + webpackModuleIdx++;
@@ -52,25 +60,38 @@ exports.clientModuleError = function clientModuleError(moduleError) {
     chunks: [],
     name: '*',
   };
-  const mod = {exports: {}};
+  const mod = new Module();
   nodeCompile.call(mod, '"use client"', idx);
   return mod.exports;
 };
 
-exports.clientExports = function clientExports(moduleExports) {
+exports.clientExports = function clientExports(
+  moduleExports,
+  chunkId,
+  chunkFilename,
+  blockOnChunk,
+) {
+  const chunks = [];
+  if (chunkId) {
+    chunks.push(chunkId, chunkFilename);
+
+    if (blockOnChunk) {
+      webpackChunkMap[chunkId] = blockOnChunk;
+    }
+  }
   const idx = '' + webpackModuleIdx++;
   webpackClientModules[idx] = moduleExports;
   const path = url.pathToFileURL(idx).href;
   webpackClientMap[path] = {
     id: idx,
-    chunks: [],
+    chunks,
     name: '*',
   };
   // We only add this if this test is testing ESM compat.
   if ('__esModule' in moduleExports) {
     webpackClientMap[path + '#'] = {
       id: idx,
-      chunks: [],
+      chunks,
       name: '',
     };
   }
@@ -80,7 +101,7 @@ exports.clientExports = function clientExports(moduleExports) {
         for (const name in asyncModuleExports) {
           webpackClientMap[path + '#' + name] = {
             id: idx,
-            chunks: [],
+            chunks,
             name: name,
           };
         }
@@ -96,23 +117,30 @@ exports.clientExports = function clientExports(moduleExports) {
     };
     webpackClientMap[path + '#split'] = {
       id: splitIdx,
-      chunks: [],
+      chunks,
       name: 's',
     };
   }
-  const mod = {exports: {}};
+  const mod = new Module();
   nodeCompile.call(mod, '"use client"', idx);
   return mod.exports;
 };
 
 // This tests server to server references. There's another case of client to server references.
-exports.serverExports = function serverExports(moduleExports) {
+exports.serverExports = function serverExports(moduleExports, blockOnChunk) {
   const idx = '' + webpackModuleIdx++;
   webpackServerModules[idx] = moduleExports;
   const path = url.pathToFileURL(idx).href;
+
+  const chunks = [];
+  if (blockOnChunk) {
+    const chunkId = webpackChunkIdx++;
+    webpackChunkMap[chunkId] = blockOnChunk;
+    chunks.push(chunkId);
+  }
   webpackServerMap[path] = {
     id: idx,
-    chunks: [],
+    chunks: chunks,
     name: '*',
   };
   // We only add this if this test is testing ESM compat.
@@ -135,7 +163,8 @@ exports.serverExports = function serverExports(moduleExports) {
       name: 's',
     };
   }
-  const mod = {exports: moduleExports};
+  const mod = new Module();
+  mod.exports = moduleExports;
   nodeCompile.call(mod, '"use server"', idx);
   return mod.exports;
 };

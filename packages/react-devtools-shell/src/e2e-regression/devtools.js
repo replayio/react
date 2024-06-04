@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
-import {createRoot} from 'react-dom/client';
+import * as ReactDOMClient from 'react-dom/client';
 import {
   activate as activateBackend,
   initialize as initializeBackend,
@@ -32,7 +32,7 @@ function init(appIframe, devtoolsContainer, appSource) {
   const DevTools = createDevTools(contentWindow);
 
   inject(contentDocument, appSource, () => {
-    createRoot(devtoolsContainer).render(
+    ReactDOMClient.createRoot(devtoolsContainer).render(
       <DevTools
         hookNamesModuleLoaderFunction={hookNamesModuleLoaderFunction}
         showTabBar={true}
@@ -46,7 +46,14 @@ function init(appIframe, devtoolsContainer, appSource) {
 const iframe = document.getElementById('iframe');
 const devtoolsContainer = document.getElementById('devtools');
 
-init(iframe, devtoolsContainer, 'dist/e2e-app-regression.js');
+const {protocol, hostname} = window.location;
+const port = 8181; // secondary webpack server port
+init(
+  iframe,
+  devtoolsContainer,
+  `${protocol}//${hostname}:${port}/dist/e2e-app-regression.js`,
+);
 
 // ReactDOM Test Selector APIs used by Playwright e2e tests
-window.parent.REACT_DOM_DEVTOOLS = ReactDOM;
+window.parent.REACT_DOM_DEVTOOLS =
+  'createTestNameSelector' in ReactDOMClient ? ReactDOMClient : ReactDOM;

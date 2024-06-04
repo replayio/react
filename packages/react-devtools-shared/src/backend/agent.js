@@ -26,7 +26,7 @@ import type {
 import type {
   ComponentFilter,
   BrowserTheme,
-} from 'react-devtools-shared/src/types';
+} from 'react-devtools-shared/src/frontend/types';
 import {isSynchronousXHRSupported} from './utils';
 
 const debug = (methodName: string, ...args: Array<string>) => {
