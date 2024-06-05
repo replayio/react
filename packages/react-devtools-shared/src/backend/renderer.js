@@ -92,10 +92,8 @@ import {
   SERVER_CONTEXT_SYMBOL_STRING,
 } from './ReactSymbols';
 import {format} from './utils';
-import {enableStyleXFeatures} from 'react-devtools-feature-flags';
 import is from 'shared/objectIs';
 import hasOwnProperty from 'shared/hasOwnProperty';
-import {getStyleXData} from './StyleX/utils';
 // REPLAY Not doing any profiling work for the foreseeable future, disable this
 // import {createProfilingHooks} from './profilingHooks';
 
@@ -3491,12 +3489,6 @@ export function attach(
     const plugins: Plugins = {
       stylex: null,
     };
-
-    if (enableStyleXFeatures) {
-      if (memoizedProps != null && memoizedProps.hasOwnProperty('xstyle')) {
-        plugins.stylex = getStyleXData(memoizedProps.xstyle);
-      }
-    }
 
     let source = null;
     if (canViewSource) {
