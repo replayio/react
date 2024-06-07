@@ -10,7 +10,6 @@
 import Agent from './agent';
 
 import {attach} from './renderer';
-import {attach as attachLegacy} from './legacy/renderer';
 import {hasAssignedBackend} from './utils';
 
 import type {DevToolsHook, ReactRenderer, RendererInterface} from './types';
@@ -78,7 +77,9 @@ export function initBackend(
         rendererInterface = attach(hook, id, renderer, global);
       } else if (renderer.ComponentTree) {
         // react-dom v15
-        rendererInterface = attachLegacy(hook, id, renderer, global);
+        // REPLAY We do not support React 15 or earlier for our RDT integration.
+        // Don't let this connect or save operations.
+        // rendererInterface = attachLegacy(hook, id, renderer, global);
       } else {
         // Older react-dom or other unsupported renderer version
       }

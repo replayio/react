@@ -1109,6 +1109,7 @@ export function attach(
     getSerializedElementValueByPath,
     deletePath,
     flushInitialOperations,
+    flushPendingEvents,
     getBestMatchForTrackedPath,
     getDisplayNameForFiberID,
     getFiberForNative,

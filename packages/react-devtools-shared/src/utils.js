@@ -67,7 +67,6 @@ import {
   ElementTypeFunction,
   ElementTypeMemo,
 } from 'react-devtools-shared/src/frontend/types';
-import {localStorageGetItem, localStorageSetItem} from './storage';
 import {meta} from './hydration';
 import isArray from './isArray';
 
@@ -133,10 +132,16 @@ export function getWrappedDisplayName(
   wrapperName: string,
   fallbackName?: string,
 ): string {
-  const displayName = (outerType: any)?.displayName;
-  return (
-    displayName || `${wrapperName}(${getDisplayName(innerType, fallbackName)})`
-  );
+  const displayName = (outerType: any).displayName;
+
+  let finalDisplayName = displayName;
+
+  if (!finalDisplayName) {
+    const innerDisplayName = getDisplayName(innerType, fallbackName);
+    finalDisplayName = `${wrapperName}(${innerDisplayName})`;
+  }
+
+  return finalDisplayName;
 }
 
 export function getDisplayName(
@@ -160,6 +165,18 @@ export function getDisplayName(
   }
 
   cachedDisplayNames.set(type, displayName);
+
+  if (window.componentFunctionDetailsPerPoint?.has(type)) {
+    const functionDetails = window.componentFunctionDetailsPerPoint.get(type);
+    functionDetails.minifiedDisplayName = displayName;
+  } else {
+    const functionDetails = {
+      minifiedDisplayName: displayName,
+      fiberIds: [],
+    };
+    window.componentFunctionDetailsPerPoint?.set(type, functionDetails);
+  }
+  // window.allReactComponentDisplayNames?.set(type, displayName);
   return displayName;
 }
 
@@ -349,26 +366,12 @@ export function getDefaultComponentFilters(): Array<ComponentFilter> {
 }
 
 export function getSavedComponentFilters(): Array<ComponentFilter> {
-  try {
-    const raw = localStorageGetItem(
-      LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
-    );
-    if (raw != null) {
-      const parsedFilters: Array<ComponentFilter> = JSON.parse(raw);
-      return filterOutLocationComponentFilters(parsedFilters);
-    }
-  } catch (error) {}
   return getDefaultComponentFilters();
 }
 
 export function setSavedComponentFilters(
   componentFilters: Array<ComponentFilter>,
-): void {
-  localStorageSetItem(
-    LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
-    JSON.stringify(filterOutLocationComponentFilters(componentFilters)),
-  );
-}
+): void {}
 
 // Following __debugSource removal from Fiber, the new approach for finding the source location
 // of a component, represented by the Fiber, is based on lazily generating and parsing component stack frames
@@ -409,29 +412,19 @@ export function castBrowserTheme(v: any): ?BrowserTheme {
 }
 
 export function getAppendComponentStack(): boolean {
-  const raw = localStorageGetItem(
-    LOCAL_STORAGE_SHOULD_APPEND_COMPONENT_STACK_KEY,
-  );
-  return parseBool(raw) ?? true;
+  return true;
 }
 
 export function getBreakOnConsoleErrors(): boolean {
-  const raw = localStorageGetItem(LOCAL_STORAGE_SHOULD_BREAK_ON_CONSOLE_ERRORS);
-  return parseBool(raw) ?? false;
+  return false;
 }
 
 export function getHideConsoleLogsInStrictMode(): boolean {
-  const raw = localStorageGetItem(
-    LOCAL_STORAGE_HIDE_CONSOLE_LOGS_IN_STRICT_MODE,
-  );
-  return parseBool(raw) ?? false;
+  return false;
 }
 
 export function getShowInlineWarningsAndErrors(): boolean {
-  const raw = localStorageGetItem(
-    LOCAL_STORAGE_SHOW_INLINE_WARNINGS_AND_ERRORS_KEY,
-  );
-  return parseBool(raw) ?? true;
+  return true;
 }
 
 export function getDefaultOpenInEditorURL(): string {
@@ -441,12 +434,6 @@ export function getDefaultOpenInEditorURL(): string {
 }
 
 export function getOpenInEditorURL(): string {
-  try {
-    const raw = localStorageGetItem(LOCAL_STORAGE_OPEN_IN_EDITOR_URL);
-    if (raw != null) {
-      return JSON.parse(raw);
-    }
-  } catch (error) {}
   return getDefaultOpenInEditorURL();
 }
 
