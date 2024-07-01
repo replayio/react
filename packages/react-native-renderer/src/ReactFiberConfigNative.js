@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {TouchedViewDataAtPoint} from './ReactNativeTypes';
+import type {InspectorData, TouchedViewDataAtPoint} from './ReactNativeTypes';
 
 // Modules provided by RN:
 import {
@@ -24,7 +24,12 @@ import {
 } from './ReactNativeComponentTree';
 import ReactNativeFiberHostComponent from './ReactNativeFiberHostComponent';
 
-import {DefaultEventPriority} from 'react-reconciler/src/ReactEventPriorities';
+import {
+  DefaultEventPriority,
+  NoEventPriority,
+  type EventPriority,
+} from 'react-reconciler/src/ReactEventPriorities';
+import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
 
 const {get: getViewConfigForType} = ReactNativeViewConfigRegistry;
 
@@ -43,8 +48,10 @@ export type ChildSet = void; // Unused
 
 export type TimeoutHandle = TimeoutID;
 export type NoTimeout = -1;
+export type TransitionStatus = mixed;
 
 export type RendererInspectionConfig = $ReadOnly<{
+  getInspectorDataForInstance?: (instance: Fiber | null) => InspectorData,
   // Deprecated. Replaced with getInspectorDataForViewAtPoint.
   getInspectorDataForViewTag?: (tag: number) => Object,
   getInspectorDataForViewAtPoint?: (
@@ -54,11 +61,6 @@ export type RendererInspectionConfig = $ReadOnly<{
     callback: (viewData: TouchedViewDataAtPoint) => mixed,
   ) => void,
 }>;
-
-const UPDATE_SIGNAL = {};
-if (__DEV__) {
-  Object.freeze(UPDATE_SIGNAL);
-}
 
 // Counter for uniquely identifying views.
 // % 10 === 1 means it is a rootTag.
@@ -216,9 +218,10 @@ export function getChildHostContext(
   }
 }
 
-export function getPublicInstance(instance: Instance): * {
+export function getPublicInstance(instance: Instance): PublicInstance {
   // $FlowExpectedError[prop-missing] For compatibility with Fabric
   if (instance.canonical != null && instance.canonical.publicInstance != null) {
+    // $FlowFixMe[incompatible-return]
     return instance.canonical.publicInstance;
   }
 
@@ -228,16 +231,6 @@ export function getPublicInstance(instance: Instance): * {
 export function prepareForCommit(containerInfo: Container): null | Object {
   // Noop
   return null;
-}
-
-export function prepareUpdate(
-  instance: Instance,
-  type: string,
-  oldProps: Props,
-  newProps: Props,
-  hostContext: HostContext,
-): null | Object {
-  return UPDATE_SIGNAL;
 }
 
 export function resetAfterCommit(containerInfo: Container): void {
@@ -261,7 +254,19 @@ export function shouldSetTextContent(type: string, props: Props): boolean {
   return false;
 }
 
-export function getCurrentEventPriority(): * {
+let currentUpdatePriority: EventPriority = NoEventPriority;
+export function setCurrentUpdatePriority(newPriority: EventPriority): void {
+  currentUpdatePriority = newPriority;
+}
+
+export function getCurrentUpdatePriority(): EventPriority {
+  return currentUpdatePriority;
+}
+
+export function resolveUpdatePriority(): EventPriority {
+  if (currentUpdatePriority !== NoEventPriority) {
+    return currentUpdatePriority;
+  }
   return DefaultEventPriority;
 }
 
@@ -343,7 +348,6 @@ export function commitMount(
 
 export function commitUpdate(
   instance: Instance,
-  updatePayloadTODO: Object,
   type: string,
   oldProps: Props,
   newProps: Props,
@@ -531,7 +535,7 @@ export function maySuspendCommit(type: Type, props: Props): boolean {
 }
 
 export function preloadInstance(type: Type, props: Props): boolean {
-  // Return true to indicate it's already loaded
+  // Return false to indicate it's already loaded
   return true;
 }
 
@@ -542,3 +546,8 @@ export function suspendInstance(type: Type, props: Props): void {}
 export function waitForCommitToBeReady(): null {
   return null;
 }
+
+export const NotPendingTransition: TransitionStatus = null;
+
+export type FormInstance = Instance;
+export function resetFormInstance(form: Instance): void {}

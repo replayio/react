@@ -1,3 +1,12 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @emails react-core
+ */
+
 'use strict';
 
 let React;
@@ -7,16 +16,17 @@ let act;
 let use;
 let useDebugValue;
 let useState;
+let useTransition;
 let useMemo;
 let useEffect;
 let Suspense;
 let startTransition;
-let cache;
 let pendingTextRequests;
 let waitFor;
 let waitForPaint;
 let assertLog;
 let waitForAll;
+let waitForMicrotasks;
 
 describe('ReactUse', () => {
   beforeEach(() => {
@@ -29,17 +39,18 @@ describe('ReactUse', () => {
     use = React.use;
     useDebugValue = React.useDebugValue;
     useState = React.useState;
+    useTransition = React.useTransition;
     useMemo = React.useMemo;
     useEffect = React.useEffect;
     Suspense = React.Suspense;
     startTransition = React.startTransition;
-    cache = React.cache;
 
     const InternalTestUtils = require('internal-test-utils');
     waitForAll = InternalTestUtils.waitForAll;
     assertLog = InternalTestUtils.assertLog;
     waitForPaint = InternalTestUtils.waitForPaint;
     waitFor = InternalTestUtils.waitFor;
+    waitForMicrotasks = InternalTestUtils.waitForMicrotasks;
 
     pendingTextRequests = new Map();
   });
@@ -230,11 +241,17 @@ describe('ReactUse', () => {
     }
 
     const root = ReactNoop.createRoot();
-    await act(() => {
-      startTransition(() => {
-        root.render(<App />);
+    await expect(async () => {
+      await act(() => {
+        startTransition(() => {
+          root.render(<App />);
+        });
       });
-    });
+    }).toErrorDev([
+      'A component was suspended by an uncached promise. Creating ' +
+        'promises inside a Client Component or hook is not yet ' +
+        'supported, except via a Suspense-compatible library or framework.',
+    ]);
     assertLog(['ABC']);
     expect(root).toMatchRenderedOutput('ABC');
   });
@@ -394,11 +411,20 @@ describe('ReactUse', () => {
     }
 
     const root = ReactNoop.createRoot();
-    await act(() => {
-      startTransition(() => {
-        root.render(<App />);
+    await expect(async () => {
+      await act(() => {
+        startTransition(() => {
+          root.render(<App />);
+        });
       });
-    });
+    }).toErrorDev([
+      'A component was suspended by an uncached promise. Creating ' +
+        'promises inside a Client Component or hook is not yet ' +
+        'supported, except via a Suspense-compatible library or framework.',
+      'A component was suspended by an uncached promise. Creating ' +
+        'promises inside a Client Component or hook is not yet ' +
+        'supported, except via a Suspense-compatible library or framework.',
+    ]);
     assertLog([
       // First attempt. The uncached promise suspends.
       'Suspend! [Async]',
@@ -641,13 +667,15 @@ describe('ReactUse', () => {
   });
 
   test('when waiting for data to resolve, an update on a different root does not cause work to be dropped', async () => {
-    const getCachedAsyncText = cache(getAsyncText);
+    const promise = getAsyncText('Hi');
 
     function App() {
-      return <Text text={use(getCachedAsyncText('Hi'))} />;
+      return <Text text={use(promise)} />;
     }
 
     const root1 = ReactNoop.createRoot();
+    assertLog(['Async text requested [Hi]']);
+
     await act(() => {
       root1.render(<Suspense fallback={<Text text="Loading..." />} />);
     });
@@ -662,7 +690,7 @@ describe('ReactUse', () => {
         );
       });
     });
-    assertLog(['Async text requested [Hi]']);
+    assertLog([]);
 
     // While we're waiting for the first root's data to resolve, a second
     // root renders.
@@ -996,39 +1024,46 @@ describe('ReactUse', () => {
   );
 
   test('load multiple nested Suspense boundaries', async () => {
-    const getCachedAsyncText = cache(getAsyncText);
+    const promiseA = getAsyncText('A');
+    const promiseB = getAsyncText('B');
+    const promiseC = getAsyncText('C');
+    assertLog([
+      'Async text requested [A]',
+      'Async text requested [B]',
+      'Async text requested [C]',
+    ]);
 
-    function AsyncText({text}) {
-      return <Text text={use(getCachedAsyncText(text))} />;
+    function AsyncText({promise}) {
+      return <Text text={use(promise)} />;
     }
 
     const root = ReactNoop.createRoot();
     await act(() => {
       root.render(
         <Suspense fallback={<Text text="(Loading A...)" />}>
-          <AsyncText text="A" />
+          <AsyncText promise={promiseA} />
           <Suspense fallback={<Text text="(Loading B...)" />}>
-            <AsyncText text="B" />
+            <AsyncText promise={promiseB} />
             <Suspense fallback={<Text text="(Loading C...)" />}>
-              <AsyncText text="C" />
+              <AsyncText promise={promiseC} />
             </Suspense>
           </Suspense>
         </Suspense>,
       );
     });
-    assertLog(['Async text requested [A]', '(Loading A...)']);
+    assertLog(['(Loading A...)']);
     expect(root).toMatchRenderedOutput('(Loading A...)');
 
     await act(() => {
       resolveTextRequests('A');
     });
-    assertLog(['A', 'Async text requested [B]', '(Loading B...)']);
+    assertLog(['A', '(Loading B...)']);
     expect(root).toMatchRenderedOutput('A(Loading B...)');
 
     await act(() => {
       resolveTextRequests('B');
     });
-    assertLog(['B', 'Async text requested [C]', '(Loading C...)']);
+    assertLog(['B', '(Loading C...)']);
     expect(root).toMatchRenderedOutput('AB(Loading C...)');
 
     await act(() => {
@@ -1580,4 +1615,382 @@ describe('ReactUse', () => {
       </>,
     );
   });
+
+  test('regression test: updates while component is suspended should not be mistaken for render phase updates', async () => {
+    const promiseA = getAsyncText('A');
+    const promiseB = getAsyncText('B');
+    const promiseC = getAsyncText('C');
+    assertLog([
+      'Async text requested [A]',
+      'Async text requested [B]',
+      'Async text requested [C]',
+    ]);
+
+    let setState;
+    function App() {
+      const [state, _setState] = useState(promiseA);
+      setState = _setState;
+      return <Text text={use(state)} />;
+    }
+
+    // Initial render
+    const root = ReactNoop.createRoot();
+    await act(() => root.render(<App />));
+    expect(root).toMatchRenderedOutput(null);
+    await act(() => resolveTextRequests('A'));
+    assertLog(['A']);
+    expect(root).toMatchRenderedOutput('A');
+
+    // Update to B. This will suspend.
+    await act(() => startTransition(() => setState(promiseB)));
+    expect(root).toMatchRenderedOutput('A');
+
+    // While B is suspended, update to C. This should immediately interrupt
+    // the render for B. In the regression, this update was mistakenly treated
+    // as a render phase update.
+    ReactNoop.flushSync(() => setState(promiseC));
+
+    // Finish rendering.
+    await act(() => resolveTextRequests('C'));
+    assertLog(['C']);
+    expect(root).toMatchRenderedOutput('C');
+  });
+
+  // @gate !forceConcurrentByDefaultForTesting
+  test('an async component outside of a Suspense boundary crashes with an error (resolves in microtask)', async () => {
+    class ErrorBoundary extends React.Component {
+      state = {error: null};
+      static getDerivedStateFromError(error) {
+        return {error};
+      }
+      render() {
+        if (this.state.error) {
+          return <Text text={this.state.error.message} />;
+        }
+        return this.props.children;
+      }
+    }
+
+    async function AsyncClientComponent() {
+      return <Text text="Hi" />;
+    }
+
+    const root = ReactNoop.createRoot();
+    await expect(async () => {
+      await act(() => {
+        root.render(
+          <ErrorBoundary>
+            <AsyncClientComponent />
+          </ErrorBoundary>,
+        );
+      });
+    }).toErrorDev([
+      'async/await is not yet supported in Client Components, only ' +
+        'Server Components. This error is often caused by accidentally ' +
+        "adding `'use client'` to a module that was originally written " +
+        'for the server.',
+    ]);
+    assertLog([
+      'async/await is not yet supported in Client Components, only Server ' +
+        'Components. This error is often caused by accidentally adding ' +
+        "`'use client'` to a module that was originally written for " +
+        'the server.',
+      'async/await is not yet supported in Client Components, only Server ' +
+        'Components. This error is often caused by accidentally adding ' +
+        "`'use client'` to a module that was originally written for " +
+        'the server.',
+    ]);
+    expect(root).toMatchRenderedOutput(
+      'async/await is not yet supported in Client Components, only Server ' +
+        'Components. This error is often caused by accidentally adding ' +
+        "`'use client'` to a module that was originally written for " +
+        'the server.',
+    );
+  });
+
+  // @gate !forceConcurrentByDefaultForTesting
+  test('an async component outside of a Suspense boundary crashes with an error (resolves in macrotask)', async () => {
+    class ErrorBoundary extends React.Component {
+      state = {error: null};
+      static getDerivedStateFromError(error) {
+        return {error};
+      }
+      render() {
+        if (this.state.error) {
+          return <Text text={this.state.error.message} />;
+        }
+        return this.props.children;
+      }
+    }
+
+    async function AsyncClientComponent() {
+      await waitForMicrotasks();
+      return <Text text="Hi" />;
+    }
+
+    const root = ReactNoop.createRoot();
+    await expect(async () => {
+      await act(() => {
+        root.render(
+          <ErrorBoundary>
+            <AsyncClientComponent />
+          </ErrorBoundary>,
+        );
+      });
+    }).toErrorDev([
+      'async/await is not yet supported in Client Components, only ' +
+        'Server Components. This error is often caused by accidentally ' +
+        "adding `'use client'` to a module that was originally written " +
+        'for the server.',
+    ]);
+    assertLog([
+      'async/await is not yet supported in Client Components, only Server ' +
+        'Components. This error is often caused by accidentally adding ' +
+        "`'use client'` to a module that was originally written for " +
+        'the server.',
+      'async/await is not yet supported in Client Components, only Server ' +
+        'Components. This error is often caused by accidentally adding ' +
+        "`'use client'` to a module that was originally written for " +
+        'the server.',
+    ]);
+    expect(root).toMatchRenderedOutput(
+      'async/await is not yet supported in Client Components, only Server ' +
+        'Components. This error is often caused by accidentally adding ' +
+        "`'use client'` to a module that was originally written for " +
+        'the server.',
+    );
+  });
+
+  test(
+    'warn if async client component calls a hook (e.g. useState) ' +
+      'during a non-sync update',
+    async () => {
+      async function AsyncClientComponent() {
+        useState();
+        return <Text text="Hi" />;
+      }
+
+      const root = ReactNoop.createRoot();
+      await expect(async () => {
+        await act(() => {
+          startTransition(() => {
+            root.render(<AsyncClientComponent />);
+          });
+        });
+      }).toErrorDev([
+        // Note: This used to log a different warning about not using hooks
+        // inside async components, like we do on the server. Since then, we
+        // decided to warn for _any_ async client component regardless of
+        // whether the update is sync. But if we ever add back support for async
+        // client components, we should add back the hook warning.
+        'async/await is not yet supported in Client Components, only Server ' +
+          'Components. This error is often caused by accidentally adding ' +
+          "`'use client'` to a module that was originally written for " +
+          'the server.',
+        'A component was suspended by an uncached promise. Creating ' +
+          'promises inside a Client Component or hook is not yet ' +
+          'supported, except via a Suspense-compatible library or framework.',
+      ]);
+    },
+  );
+
+  test('warn if async client component calls a hook (e.g. use)', async () => {
+    const promise = Promise.resolve();
+
+    async function AsyncClientComponent() {
+      use(promise);
+      return <Text text="Hi" />;
+    }
+
+    const root = ReactNoop.createRoot();
+    await expect(async () => {
+      await act(() => {
+        startTransition(() => {
+          root.render(<AsyncClientComponent />);
+        });
+      });
+    }).toErrorDev([
+      // Note: This used to log a different warning about not using hooks
+      // inside async components, like we do on the server. Since then, we
+      // decided to warn for _any_ async client component regardless of
+      // whether the update is sync. But if we ever add back support for async
+      // client components, we should add back the hook warning.
+      'async/await is not yet supported in Client Components, only Server ' +
+        'Components. This error is often caused by accidentally adding ' +
+        "`'use client'` to a module that was originally written for " +
+        'the server.',
+      'A component was suspended by an uncached promise. Creating ' +
+        'promises inside a Client Component or hook is not yet ' +
+        'supported, except via a Suspense-compatible library or framework.',
+      'A component was suspended by an uncached promise. Creating ' +
+        'promises inside a Client Component or hook is not yet ' +
+        'supported, except via a Suspense-compatible library or framework.',
+    ]);
+  });
+
+  // @gate enableAsyncIterableChildren
+  test('async generator component', async () => {
+    let hi, world;
+    async function* App() {
+      // Only cached promises can be awaited in async generators because
+      // when we rerender, it'll issue another request which blocks the next.
+      await (hi || (hi = getAsyncText('Hi')));
+      yield <Text key="1" text="Hi" />;
+      yield ' ';
+      await (world || (world = getAsyncText('World')));
+      yield <Text key="2" text="World" />;
+    }
+
+    const root = ReactNoop.createRoot();
+    await expect(async () => {
+      await act(() => {
+        startTransition(() => {
+          root.render(<App />);
+        });
+      });
+    }).toErrorDev([
+      'async/await is not yet supported in Client Components, only ' +
+        'Server Components. This error is often caused by accidentally ' +
+        "adding `'use client'` to a module that was originally written " +
+        'for the server.',
+    ]);
+    assertLog(['Async text requested [Hi]']);
+
+    await expect(async () => {
+      await act(() => resolveTextRequests('Hi'));
+    }).toErrorDev(
+      // We get this warning because the generator's promise themselves are not cached.
+      'A component was suspended by an uncached promise. Creating ' +
+        'promises inside a Client Component or hook is not yet ' +
+        'supported, except via a Suspense-compatible library or framework.',
+    );
+
+    assertLog(['Async text requested [World]']);
+
+    await act(() => resolveTextRequests('World'));
+
+    assertLog(['Hi', 'World']);
+    expect(root).toMatchRenderedOutput('Hi World');
+  });
+
+  // @gate enableAsyncIterableChildren
+  test('async iterable children', async () => {
+    let hi, world;
+    const iterable = {
+      async *[Symbol.asyncIterator]() {
+        // Only cached promises can be awaited in async iterables because
+        // when we retry, it'll ask for another iterator which issues another
+        // request which blocks the next.
+        await (hi || (hi = getAsyncText('Hi')));
+        yield <Text key="1" text="Hi" />;
+        yield ' ';
+        await (world || (world = getAsyncText('World')));
+        yield <Text key="2" text="World" />;
+      },
+    };
+
+    function App({children}) {
+      return <div>{children}</div>;
+    }
+
+    const root = ReactNoop.createRoot();
+    await act(() => {
+      startTransition(() => {
+        root.render(<App>{iterable}</App>);
+      });
+    });
+    assertLog(['Async text requested [Hi]']);
+
+    await expect(async () => {
+      await act(() => resolveTextRequests('Hi'));
+    }).toErrorDev(
+      // We get this warning because the generator's promise themselves are not cached.
+      'A component was suspended by an uncached promise. Creating ' +
+        'promises inside a Client Component or hook is not yet ' +
+        'supported, except via a Suspense-compatible library or framework.',
+    );
+
+    assertLog(['Async text requested [World]']);
+
+    await act(() => resolveTextRequests('World'));
+
+    assertLog(['Hi', 'World']);
+    expect(root).toMatchRenderedOutput(<div>Hi World</div>);
+  });
+
+  it(
+    'regression: does not get stuck in pending state after `use` suspends ' +
+      '(when `use` comes before all hooks)',
+    async () => {
+      // This is a regression test. The root cause was an issue where we failed to
+      // switch from the "re-render" dispatcher back to the "update" dispatcher
+      // after a `use` suspends and triggers a replay.
+      let update;
+      function App({promise}) {
+        const value = use(promise);
+
+        const [isPending, startLocalTransition] = useTransition();
+        update = () => {
+          startLocalTransition(() => {
+            root.render(<App promise={getAsyncText('Updated')} />);
+          });
+        };
+
+        return <Text text={value + (isPending ? ' (pending...)' : '')} />;
+      }
+
+      const root = ReactNoop.createRoot();
+      await act(() => {
+        root.render(<App promise={Promise.resolve('Initial')} />);
+      });
+      assertLog(['Initial']);
+      expect(root).toMatchRenderedOutput('Initial');
+
+      await act(() => update());
+      assertLog(['Async text requested [Updated]', 'Initial (pending...)']);
+
+      await act(() => resolveTextRequests('Updated'));
+      assertLog(['Updated']);
+      expect(root).toMatchRenderedOutput('Updated');
+    },
+  );
+
+  it(
+    'regression: does not get stuck in pending state after `use` suspends ' +
+      '(when `use` in in the middle of hook list)',
+    async () => {
+      // Same as previous test but `use` comes in between two hooks.
+      let update;
+      function App({promise}) {
+        // This hook is only here to test that `use` resumes correctly after
+        // suspended even if it comes in between other hooks.
+        useState(false);
+
+        const value = use(promise);
+
+        const [isPending, startLocalTransition] = useTransition();
+        update = () => {
+          startLocalTransition(() => {
+            root.render(<App promise={getAsyncText('Updated')} />);
+          });
+        };
+
+        return <Text text={value + (isPending ? ' (pending...)' : '')} />;
+      }
+
+      const root = ReactNoop.createRoot();
+      await act(() => {
+        root.render(<App promise={Promise.resolve('Initial')} />);
+      });
+      assertLog(['Initial']);
+      expect(root).toMatchRenderedOutput('Initial');
+
+      await act(() => update());
+      assertLog(['Async text requested [Updated]', 'Initial (pending...)']);
+
+      await act(() => resolveTextRequests('Updated'));
+      assertLog(['Updated']);
+      expect(root).toMatchRenderedOutput('Updated');
+    },
+  );
 });

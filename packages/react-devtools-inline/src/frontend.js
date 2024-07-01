@@ -13,15 +13,10 @@ import {
   getHideConsoleLogsInStrictMode,
 } from 'react-devtools-shared/src/utils';
 
-import type {Wall} from 'react-devtools-shared/src/types';
+import type {Wall} from 'react-devtools-shared/src/frontend/types';
 import type {FrontendBridge} from 'react-devtools-shared/src/bridge';
 import type {Props} from 'react-devtools-shared/src/devtools/views/DevTools';
-
-type Config = {
-  checkBridgeProtocolCompatibility?: boolean,
-  supportsNativeInspection?: boolean,
-  supportsProfiling?: boolean,
-};
+import type {Config} from 'react-devtools-shared/src/devtools/store';
 
 export function createStore(bridge: FrontendBridge, config?: Config): Store {
   return new Store(bridge, {

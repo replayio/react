@@ -14,7 +14,7 @@ import {hasAssignedBackend} from './utils';
 
 import type {DevToolsHook, ReactRenderer, RendererInterface} from './types';
 
-// this is the backend that is compactible with all older React versions
+// this is the backend that is compatible with all older React versions
 function isMatchingRender(version: string): boolean {
   return !hasAssignedBackend(version);
 }
@@ -30,6 +30,7 @@ export function initBackend(
     // DevTools didn't get injected into this page (maybe b'c of the contentType).
     return () => {};
   }
+
   const subs = [
     hook.sub(
       'renderer-attached',
@@ -63,10 +64,6 @@ export function initBackend(
   ];
 
   const attachRenderer = (id: number, renderer: ReactRenderer) => {
-    // skip if already attached
-    if (renderer.attached) {
-      return;
-    }
     // only attach if the renderer is compatible with the current version of the backend
     if (!isMatchingRender(renderer.reconcilerVersion || renderer.version)) {
       return;
@@ -103,7 +100,6 @@ export function initBackend(
     } else {
       hook.emit('unsupported-renderer-version', id);
     }
-    renderer.attached = true;
   };
 
   // Connect renderers that have already injected themselves.

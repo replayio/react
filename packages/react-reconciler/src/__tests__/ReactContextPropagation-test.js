@@ -23,7 +23,7 @@ describe('ReactLazyContextPropagation', () => {
     useContext = React.useContext;
     Suspense = React.Suspense;
     if (gate(flags => flags.enableSuspenseList)) {
-      SuspenseList = React.SuspenseList;
+      SuspenseList = React.unstable_SuspenseList;
     }
 
     const InternalTestUtils = require('internal-test-utils');
@@ -489,7 +489,7 @@ describe('ReactLazyContextPropagation', () => {
     expect(root).toMatchRenderedOutput('BBB');
   });
 
-  // @gate enableLegacyCache
+  // @gate enableLegacyCache && !disableLegacyMode
   test('context is propagated across retries (legacy)', async () => {
     const root = ReactNoop.createLegacyRoot();
 
@@ -550,7 +550,7 @@ describe('ReactLazyContextPropagation', () => {
     expect(root).toMatchRenderedOutput('BB');
   });
 
-  // @gate www
+  // @gate enableLegacyCache && enableLegacyHidden
   test('context is propagated through offscreen trees', async () => {
     const LegacyHidden = React.unstable_LegacyHidden;
 
@@ -596,7 +596,7 @@ describe('ReactLazyContextPropagation', () => {
     expect(root).toMatchRenderedOutput('BB');
   });
 
-  // @gate www
+  // @gate enableLegacyCache && enableLegacyHidden
   test('multiple contexts are propagated across through offscreen trees', async () => {
     // Same as previous test, but with multiple context providers
     const LegacyHidden = React.unstable_LegacyHidden;
@@ -822,7 +822,7 @@ describe('ReactLazyContextPropagation', () => {
     expect(root).toMatchRenderedOutput('BB');
   });
 
-  // @gate www
+  // @gate enableLegacyCache && enableLegacyHidden
   test('nested bailouts through offscreen trees', async () => {
     // Lazy context propagation will stop propagating when it hits the first
     // match. If we bail out again inside that tree, we must resume propagating.

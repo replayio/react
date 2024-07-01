@@ -7,17 +7,16 @@
  * @flow
  */
 
-import type {Source} from 'shared/ReactElementType';
 import type {
   RefObject,
   ReactContext,
-  MutableSourceSubscribeFn,
-  MutableSourceGetSnapshotFn,
-  MutableSourceVersion,
-  MutableSource,
   StartTransitionOptions,
   Wakeable,
   Usable,
+  ReactFormState,
+  Awaited,
+  ReactComponentInfo,
+  ReactDebugInfo,
 } from 'shared/ReactTypes';
 import type {WorkTag} from './ReactWorkTags';
 import type {TypeOfMode} from './ReactTypeOfMode';
@@ -29,6 +28,7 @@ import type {
   TimeoutHandle,
   NoTimeout,
   SuspenseInstance,
+  TransitionStatus,
 } from './ReactFiberConfig';
 import type {Cache} from './ReactFiberCacheComponent';
 import type {
@@ -53,10 +53,12 @@ export type HookType =
   | 'useDebugValue'
   | 'useDeferredValue'
   | 'useTransition'
-  | 'useMutableSource'
   | 'useSyncExternalStore'
   | 'useId'
-  | 'useCacheRefresh';
+  | 'useCacheRefresh'
+  | 'useOptimistic'
+  | 'useFormState'
+  | 'useActionState';
 
 export type ContextDependency<T> = {
   context: ReactContext<T>,
@@ -157,15 +159,6 @@ export type Fiber = {
   subtreeFlags: Flags,
   deletions: Array<Fiber> | null,
 
-  // Singly linked list fast path to the next fiber with side-effects.
-  nextEffect: Fiber | null,
-
-  // The first and last fiber with side-effect within this subtree. This allows
-  // us to reuse a slice of the linked list when we reuse the work done within
-  // this fiber.
-  firstEffect: Fiber | null,
-  lastEffect: Fiber | null,
-
   lanes: Lanes,
   childLanes: Lanes,
 
@@ -200,8 +193,10 @@ export type Fiber = {
   // to be the same as work in progress.
   // __DEV__ only
 
-  _debugSource?: Source | null,
-  _debugOwner?: Fiber | null,
+  _debugInfo?: ReactDebugInfo | null,
+  _debugOwner?: ReactComponentInfo | Fiber | null,
+  _debugStack?: string | Error | null,
+  _debugTask?: ConsoleTask | null,
   _debugIsCurrentlyTiming?: boolean,
   _debugNeedsRemount?: boolean,
 
@@ -235,11 +230,6 @@ type BaseFiberRootProperties = {
   context: Object | null,
   pendingContext: Object | null,
 
-  // Used by useMutableSource hook to avoid tearing during hydration.
-  mutableSourceEagerHydrationData?: Array<
-    MutableSource<any> | MutableSourceVersion,
-  > | null,
-
   // Used to create a linked list that represent all the roots that have
   // pending work scheduled on them.
   next: FiberRoot | null,
@@ -255,8 +245,8 @@ type BaseFiberRootProperties = {
   suspendedLanes: Lanes,
   pingedLanes: Lanes,
   expiredLanes: Lanes,
-  mutableReadLanes: Lanes,
   errorRecoveryDisabledLanes: Lanes,
+  shellSuspendCounter: number,
 
   finishedLanes: Lanes,
 
@@ -273,10 +263,23 @@ type BaseFiberRootProperties = {
   // a reference to.
   identifierPrefix: string,
 
+  onUncaughtError: (
+    error: mixed,
+    errorInfo: {+componentStack?: ?string},
+  ) => void,
+  onCaughtError: (
+    error: mixed,
+    errorInfo: {
+      +componentStack?: ?string,
+      +errorBoundary?: ?React$Component<any, any>,
+    },
+  ) => void,
   onRecoverableError: (
     error: mixed,
-    errorInfo: {digest?: ?string, componentStack?: ?string},
+    errorInfo: {+componentStack?: ?string},
   ) => void,
+
+  formState: ReactFormState<any, any> | null,
 };
 
 // The following attributes are only used by DevTools and are only present in DEV builds.
@@ -403,16 +406,11 @@ export type Dispatcher = {
     deps: Array<mixed> | void | null,
   ): void,
   useDebugValue<T>(value: T, formatterFn: ?(value: T) => mixed): void,
-  useDeferredValue<T>(value: T): T,
+  useDeferredValue<T>(value: T, initialValue?: T): T,
   useTransition(): [
     boolean,
     (callback: () => void, options?: StartTransitionOptions) => void,
   ],
-  useMutableSource<TSource, Snapshot>(
-    source: MutableSource<TSource>,
-    getSnapshot: MutableSourceGetSnapshotFn<TSource, Snapshot>,
-    subscribe: MutableSourceSubscribeFn<TSource, Snapshot>,
-  ): Snapshot,
   useSyncExternalStore<T>(
     subscribe: (() => void) => () => void,
     getSnapshot: () => T,
@@ -421,9 +419,25 @@ export type Dispatcher = {
   useId(): string,
   useCacheRefresh?: () => <T>(?() => T, ?T) => void,
   useMemoCache?: (size: number) => Array<any>,
+  useHostTransitionStatus?: () => TransitionStatus,
+  useOptimistic?: <S, A>(
+    passthrough: S,
+    reducer: ?(S, A) => S,
+  ) => [S, (A) => void],
+  useFormState?: <S, P>(
+    action: (Awaited<S>, P) => S,
+    initialState: Awaited<S>,
+    permalink?: string,
+  ) => [Awaited<S>, (P) => void, boolean],
+  useActionState?: <S, P>(
+    action: (Awaited<S>, P) => S,
+    initialState: Awaited<S>,
+    permalink?: string,
+  ) => [Awaited<S>, (P) => void, boolean],
 };
 
-export type CacheDispatcher = {
-  getCacheSignal: () => AbortSignal,
+export type AsyncDispatcher = {
   getCacheForType: <T>(resourceType: () => T) => T,
+  // DEV-only (or !disableStringRefs)
+  getOwner: () => null | Fiber | ReactComponentInfo,
 };
