@@ -2485,7 +2485,7 @@ export function attach(
     if (
       mostRecentlyInspectedElement !== null &&
       mostRecentlyInspectedElement.id === id &&
-      fiberRenderered
+      fiberRendered
     ) {
       // If this Fiber has updated, clear cached inspected data.
       // If it is inspected again, it may need to be re-run to obtain updated hooks values.

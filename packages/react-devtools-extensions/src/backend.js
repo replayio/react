@@ -24,9 +24,9 @@ function setup(hook: ?DevToolsHook) {
     return;
   }
 
-  const bridge = new Bridge({
+  const bridge = new Bridge<any, any>({
     listen(fn) {
-      const listener = event => {
+      const listener = (event: any) => {
         if (
           event.source !== window ||
           !event.data ||
@@ -42,7 +42,7 @@ function setup(hook: ?DevToolsHook) {
         window.removeEventListener('message', listener);
       };
     },
-    send(event, payload, transferable) {
+    send(event: string, payload: any, transferable: any) {
       window.postMessage(
         {
           source: 'react-devtools-bridge',

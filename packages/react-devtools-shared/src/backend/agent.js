@@ -216,11 +216,11 @@ export default class Agent extends EventEmitter<{
       inData,
     ) => {
       let rv;
-      this._bridge = {
+      this._bridge = ({
         send(event, data) {
           rv = {event, data};
         },
-      };
+      }: any);
       try {
         this[inEvent](inData);
       } catch (err) {

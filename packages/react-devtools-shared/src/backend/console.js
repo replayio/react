@@ -136,7 +136,11 @@ export function registerRenderer(
   // currentDispatcherRef gets injected for v16.8+ to support hooks inspection.
   // getCurrentFiber gets injected for v16.9+.
   if (currentDispatcherRef != null && typeof getCurrentFiber === 'function') {
-    const {ReactTypeOfWork} = getInternalReactConstants(version);
+    const {ReactTypeOfWork} = getInternalReactConstants(
+      version,
+      // REPLAY Our fork will never run this code anyway, make Flow happy
+      () => 0,
+    );
 
     injectedRenderers.set(renderer, {
       currentDispatcherRef,
