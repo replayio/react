@@ -63,7 +63,7 @@ import {
   TREE_OPERATION_UPDATE_ERRORS_OR_WARNINGS,
   TREE_OPERATION_UPDATE_TREE_BASE_DURATION,
 } from '../constants';
-import {HooksNode, inspectHooksOfFiber} from 'react-debug-tools';
+import {inspectHooksOfFiber} from 'react-debug-tools';
 import {
   patchConsoleUsingWindowValues,
   registerRenderer as registerRendererWithConsole,
@@ -96,8 +96,7 @@ import is from 'shared/objectIs';
 import hasOwnProperty from 'shared/hasOwnProperty';
 // REPLAY Not doing any profiling work for the foreseeable future, disable this
 // import {createProfilingHooks} from './profilingHooks';
-
-import type {GetTimelineData, ToggleProfilingStatus} from './profilingHooks';
+import type {ToggleProfilingStatus} from './profilingHooks';
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
 import type {
   ChangeDescription,
@@ -736,7 +735,6 @@ export function attach(
   } = ReactPriorityLevels;
 
   const {
-    getLaneLabelMap,
     injectProfilingHooks,
     overrideHookState,
     overrideHookStateDeletePath,
@@ -772,11 +770,12 @@ export function attach(
     };
   }
 
-  let getTimelineData: null | GetTimelineData = null;
-  let toggleProfilingStatus: null | ToggleProfilingStatus = null;
-
+  const toggleProfilingStatus: null | ToggleProfilingStatus = null;
   // REPLAY Not doing any profiling work for the foreseeable future, disable this
   /*
+  let getTimelineData: null | GetTimelineData = null;
+
+
   if (typeof injectProfilingHooks === 'function') {
     const response = createProfilingHooks({
       getDisplayNameForFiber,
@@ -2485,7 +2484,7 @@ export function attach(
     if (
       mostRecentlyInspectedElement !== null &&
       mostRecentlyInspectedElement.id === id &&
-      fiberRenderered
+      fiberRendered
     ) {
       // If this Fiber has updated, clear cached inspected data.
       // If it is inspected again, it may need to be re-run to obtain updated hooks values.
@@ -3925,6 +3924,7 @@ export function attach(
           prevFiber.memoizedState,
           fiber.memoizedState,
         );
+        // eslint-disable-next-line eqeqeq
         return indices == null || indices.length == 0 ? [] : indices;
       }
       return [];
@@ -4318,7 +4318,7 @@ export function attach(
       },
     );
 
-    let timelineData: null = null;
+    const timelineData: null = null;
 
     // REPLAY Not doing any profiling work for the foreseeable future, disable this
     /*
@@ -4833,7 +4833,6 @@ export function attach(
     setTrackedPath,
     shouldFilterFiber,
     startProfiling,
-    shouldFilterFiber,
     stopProfiling,
     storeAsGlobal,
     unpatchConsoleForStrictMode,

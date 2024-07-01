@@ -48,12 +48,12 @@ import {
   TREE_OPERATION_SET_SUBTREE_MODE,
   TREE_OPERATION_UPDATE_ERRORS_OR_WARNINGS,
   TREE_OPERATION_UPDATE_TREE_BASE_DURATION,
-  LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
-  LOCAL_STORAGE_OPEN_IN_EDITOR_URL,
-  LOCAL_STORAGE_SHOULD_BREAK_ON_CONSOLE_ERRORS,
-  LOCAL_STORAGE_SHOULD_APPEND_COMPONENT_STACK_KEY,
-  LOCAL_STORAGE_SHOW_INLINE_WARNINGS_AND_ERRORS_KEY,
-  LOCAL_STORAGE_HIDE_CONSOLE_LOGS_IN_STRICT_MODE,
+  // LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
+  // LOCAL_STORAGE_OPEN_IN_EDITOR_URL,
+  // LOCAL_STORAGE_SHOULD_BREAK_ON_CONSOLE_ERRORS,
+  // LOCAL_STORAGE_SHOULD_APPEND_COMPONENT_STACK_KEY,
+  // LOCAL_STORAGE_SHOW_INLINE_WARNINGS_AND_ERRORS_KEY,
+  // LOCAL_STORAGE_HIDE_CONSOLE_LOGS_IN_STRICT_MODE,
 } from './constants';
 import {
   ComponentFilterElementType,
@@ -390,14 +390,14 @@ export function filterOutLocationComponentFilters(
   return componentFilters.filter(f => f.type !== ComponentFilterLocation);
 }
 
-function parseBool(s: ?string): ?boolean {
-  if (s === 'true') {
-    return true;
-  }
-  if (s === 'false') {
-    return false;
-  }
-}
+// function parseBool(s: ?string): ?boolean {
+//   if (s === 'true') {
+//     return true;
+//   }
+//   if (s === 'false') {
+//     return false;
+//   }
+// }
 
 export function castBool(v: any): ?boolean {
   if (v === true || v === false) {

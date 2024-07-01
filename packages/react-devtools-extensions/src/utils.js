@@ -1,6 +1,6 @@
-/* global chrome */
+// /* global chrome */
 
-import type {BrowserTheme} from 'react-devtools-shared/src/devtools/views/DevTools';
+// import type {BrowserTheme} from 'react-devtools-shared/src/devtools/views/DevTools';
 
 // REPLAY Our RDT integration is only for Chrome currently
 export const IS_EDGE = false; // navigator.userAgent.indexOf('Edg') >= 0;

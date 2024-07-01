@@ -60,10 +60,10 @@ const debug = (methodName: string, ...args: Array<string>) => {
   }
 };
 
-const LOCAL_STORAGE_COLLAPSE_ROOTS_BY_DEFAULT_KEY =
-  'React::DevTools::collapseNodesByDefault';
-const LOCAL_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY =
-  'React::DevTools::recordChangeDescriptions';
+// const LOCAL_STORAGE_COLLAPSE_ROOTS_BY_DEFAULT_KEY =
+//   'React::DevTools::collapseNodesByDefault';
+// const LOCAL_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY =
+//   'React::DevTools::recordChangeDescriptions';
 
 type ErrorAndWarningTuples = Array<{id: number, index: number}>;
 
