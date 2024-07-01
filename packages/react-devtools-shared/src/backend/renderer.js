@@ -32,13 +32,11 @@ import {
   getWrappedDisplayName,
   getDefaultComponentFilters,
   getInObject,
-  getUID,
   renamePathInObject,
   setInObject,
   utfEncodeString,
   filterOutLocationComponentFilters,
 } from 'react-devtools-shared/src/utils';
-import {sessionStorageGetItem} from 'react-devtools-shared/src/storage';
 import {
   formatConsoleArgumentsToSingleString,
   gt,
@@ -57,8 +55,6 @@ import {
   __DEBUG__,
   PROFILING_FLAG_BASIC_SUPPORT,
   PROFILING_FLAG_TIMELINE_SUPPORT,
-  SESSION_STORAGE_RELOAD_AND_PROFILE_KEY,
-  SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
   TREE_OPERATION_ADD,
   TREE_OPERATION_REMOVE,
   TREE_OPERATION_REMOVE_ROOT,
@@ -96,13 +92,11 @@ import {
   MEMO_SYMBOL_STRING,
   SERVER_CONTEXT_SYMBOL_STRING,
 } from './ReactSymbols';
-import {enableStyleXFeatures} from 'react-devtools-feature-flags';
 import is from 'shared/objectIs';
 import hasOwnProperty from 'shared/hasOwnProperty';
-import {getStyleXData} from './StyleX/utils';
-import {createProfilingHooks} from './profilingHooks';
-
-import type {GetTimelineData, ToggleProfilingStatus} from './profilingHooks';
+// REPLAY Not doing any profiling work for the foreseeable future, disable this
+// import {createProfilingHooks} from './profilingHooks';
+import type {ToggleProfilingStatus} from './profilingHooks';
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
 import type {
   ChangeDescription,
@@ -143,6 +137,13 @@ type ReactPriorityLevelsType = {
   NoPriority: number,
 };
 
+declare var __RECORD_REPLAY_ARGUMENTS__: {
+  getPersistentId: (value: any) => number | null | void,
+  internal?: {
+    registerPlainObject: (value: any) => number | null | void,
+  },
+};
+
 export function getDispatcherRef(renderer: {
   +currentDispatcherRef?: LegacyDispatcherRef | CurrentDispatcherRef,
   ...
@@ -180,7 +181,10 @@ const getCurrentTime =
     ? () => performance.now()
     : () => Date.now();
 
-export function getInternalReactConstants(version: string): {
+export function getInternalReactConstants(
+  version: string,
+  getOrGenerateFiberID: (fiber: Fiber) => number,
+): {
   getDisplayNameForFiber: getDisplayNameForFiberType,
   getTypeSymbol: getTypeSymbolType,
   ReactPriorityLevels: ReactPriorityLevelsType,
@@ -468,12 +472,33 @@ export function getInternalReactConstants(version: string): {
     }
   }
 
+  function saveFiberIdToType(fiberId: number, type: Function) {
+    // REPLAY Save references to component functions
+    if (window.componentFunctionDetailsPerPoint?.has(type)) {
+      const functionDetails = window.componentFunctionDetailsPerPoint.get(type);
+      if (!functionDetails?.fiberIds.includes(fiberId)) {
+        functionDetails?.fiberIds?.push(fiberId);
+      }
+    } else {
+      const functionDetails = {
+        minifiedDisplayName: null,
+        fiberIds: [fiberId],
+      };
+      window.componentFunctionDetailsPerPoint?.set(type, functionDetails);
+    }
+  }
+
   // NOTICE Keep in sync with shouldFilterFiber() and other get*ForFiber methods
   function getDisplayNameForFiber(
     fiber: Fiber,
     shouldSkipForgetCheck: boolean = false,
   ): string | null {
     const {elementType, type, tag} = fiber;
+
+    const fiberId = getOrGenerateFiberID(fiber);
+    if (typeof fiberId === 'undefined') {
+      throw new Error('Could not find fiberId for fiber');
+    }
 
     let resolvedType = type;
     if (typeof type === 'object' && type !== null) {
@@ -506,8 +531,10 @@ export function getInternalReactConstants(version: string): {
       case IncompleteFunctionComponent:
       case FunctionComponent:
       case IndeterminateComponent:
+        saveFiberIdToType(fiberId, resolvedType);
         return getDisplayName(resolvedType);
       case ForwardRef:
+        saveFiberIdToType(fiberId, resolvedType);
         return getWrappedDisplayName(
           elementType,
           resolvedType,
@@ -536,6 +563,7 @@ export function getInternalReactConstants(version: string): {
         return 'Lazy';
       case MemoComponent:
       case SimpleMemoComponent:
+        saveFiberIdToType(fiberId, resolvedType);
         // Display name in React does not use `Memo` as a wrapper but fallback name.
         return getWrappedDisplayName(
           elementType,
@@ -562,6 +590,20 @@ export function getInternalReactConstants(version: string): {
         return 'Error';
       default:
         const typeSymbol = getTypeSymbol(type);
+
+        // REPLAY Save references to non-component types
+        if (window.nonComponentFiberTypesPerPoint?.has(type)) {
+          const fiberTypeDetails =
+            window.nonComponentFiberTypesPerPoint.get(type);
+          if (!fiberTypeDetails?.fiberIds.includes(fiberId)) {
+            fiberTypeDetails?.fiberIds.push(fiberId);
+          }
+        } else {
+          const fiberTypeDetails = {
+            fiberIds: [fiberId],
+          };
+          window.nonComponentFiberTypesPerPoint?.set(type, fiberTypeDetails);
+        }
 
         switch (typeSymbol) {
           case CONCURRENT_MODE_NUMBER:
@@ -656,7 +698,7 @@ export function attach(
     ReactPriorityLevels,
     ReactTypeOfWork,
     StrictModeBits,
-  } = getInternalReactConstants(version);
+  } = getInternalReactConstants(version, getOrGenerateFiberID);
   const {
     CacheComponent,
     ClassComponent,
@@ -693,7 +735,6 @@ export function attach(
   } = ReactPriorityLevels;
 
   const {
-    getLaneLabelMap,
     injectProfilingHooks,
     overrideHookState,
     overrideHookStateDeletePath,
@@ -729,8 +770,12 @@ export function attach(
     };
   }
 
+  const toggleProfilingStatus: null | ToggleProfilingStatus = null;
+  // REPLAY Not doing any profiling work for the foreseeable future, disable this
+  /*
   let getTimelineData: null | GetTimelineData = null;
-  let toggleProfilingStatus: null | ToggleProfilingStatus = null;
+
+
   if (typeof injectProfilingHooks === 'function') {
     const response = createProfilingHooks({
       getDisplayNameForFiber,
@@ -748,6 +793,7 @@ export function attach(
     getTimelineData = response.getTimelineData;
     toggleProfilingStatus = response.toggleProfilingStatus;
   }
+  */
 
   // Tracks Fibers with recently changed number of error/warning messages.
   // These collections store the Fiber rather than the ID,
@@ -1183,24 +1229,43 @@ export function attach(
   // When a mount or update is in progress, this value tracks the root that is being operated on.
   let currentRootID: number = -1;
 
+  function getReplayPersistentID(fiber: Fiber) {
+    const id = __RECORD_REPLAY_ARGUMENTS__.getPersistentId(fiber);
+    if (id == null) {
+      throw new Error('Missing persistent ID for fiber');
+    }
+    return id;
+  }
+
+  // REPLAY Use persistent IDs to determine fiber IDs
+  function getReplayFiberID(fiber: Fiber) {
+    const id = getReplayPersistentID(fiber);
+
+    let alternateFiber;
+    if (fiber.alternate) {
+      // There may be an older version of the fiber, already attached
+      alternateFiber = fiber.alternate;
+    } else if (window.unmountedFiberAlternates?.has(fiber)) {
+      // Or, React may have already deleted the older fiber as part of cleanup,
+      // but we stashed it away in the `onCommitFiberUnmount` callback before
+      // React actually deleted it. Look it up as provided by the eval wrapper.
+      alternateFiber = window.unmountedFiberAlternates.get(fiber);
+    }
+
+    if (!alternateFiber) {
+      return id;
+    }
+
+    // Our IDs are numeric, so older fibers will have a lower ID.
+    // Prefer the older fiber's ID if it exists.
+    const alternateId = getReplayPersistentID(alternateFiber);
+    return Math.min(id, alternateId);
+  }
+
   // Returns the unique ID for a Fiber or generates and caches a new one if the Fiber hasn't been seen before.
   // Once this method has been called for a Fiber, untrackFiberID() should always be called later to avoid leaking.
   function getOrGenerateFiberID(fiber: Fiber): number {
-    let id = null;
-    if (fiberToIDMap.has(fiber)) {
-      id = fiberToIDMap.get(fiber);
-    } else {
-      const {alternate} = fiber;
-      if (alternate !== null && fiberToIDMap.has(alternate)) {
-        id = fiberToIDMap.get(alternate);
-      }
-    }
-
-    let didGenerateID = false;
-    if (id === null) {
-      didGenerateID = true;
-      id = getUID();
-    }
+    const id = getReplayFiberID(fiber);
 
     // This refinement is for Flow purposes only.
     const refinedID = ((id: any): number);
@@ -1218,17 +1283,6 @@ export function attach(
     if (alternate !== null) {
       if (!fiberToIDMap.has(alternate)) {
         fiberToIDMap.set(alternate, refinedID);
-      }
-    }
-
-    if (__DEBUG__) {
-      if (didGenerateID) {
-        debug(
-          'getOrGenerateFiberID()',
-          fiber,
-          fiber.return,
-          'Generated a new UID',
-        );
       }
     }
 
@@ -1983,6 +2037,10 @@ export function attach(
       }
     }
 
+    // REPLAY Save fiber IDs that were added, for use in the component commit timeline
+    // Already limited to fibers that should be included
+    window.fiberIdsAddedThisCommit?.add(id);
+
     if (isRoot) {
       // Set supportsStrictMode to false for production renderer builds
       const isProductionBuildOfRenderer = renderer.bundleType === 0;
@@ -2081,7 +2139,8 @@ export function attach(
       }
     }
 
-    const unsafeID = getFiberIDUnsafe(fiber);
+    const persistentID = getFiberIDUnsafe(fiber);
+    const unsafeID = persistentID;
     if (unsafeID === null) {
       // If we've never seen this Fiber, it might be inside of a legacy render Suspense fragment (so the store is not even aware of it).
       // In that case we can just ignore it or it will cause errors later on.
@@ -2398,6 +2457,8 @@ export function attach(
       debug('updateFiberRecursively()', nextFiber, parentFiber);
     }
 
+    const fiberRendered = didFiberRender(prevFiber, nextFiber);
+
     if (traceUpdatesEnabled) {
       const elementType = getElementTypeForFiber(nextFiber);
       if (traceNearestHostComponentUpdate) {
@@ -2415,10 +2476,7 @@ export function attach(
           elementType === ElementTypeForwardRef
         ) {
           // Otherwise if this is a traced ancestor, flag for the nearest host descendant(s).
-          traceNearestHostComponentUpdate = didFiberRender(
-            prevFiber,
-            nextFiber,
-          );
+          traceNearestHostComponentUpdate = fiberRendered;
         }
       }
     }
@@ -2426,7 +2484,7 @@ export function attach(
     if (
       mostRecentlyInspectedElement !== null &&
       mostRecentlyInspectedElement.id === id &&
-      didFiberRender(prevFiber, nextFiber)
+      fiberRendered
     ) {
       // If this Fiber has updated, clear cached inspected data.
       // If it is inspected again, it may need to be re-run to obtain updated hooks values.
@@ -2434,6 +2492,12 @@ export function attach(
     }
 
     const shouldIncludeInTree = !shouldFilterFiber(nextFiber);
+
+    // REPLAY Save fiber IDs that were updated, for use in the component commit timeline
+    if (fiberRendered && shouldIncludeInTree) {
+      window.fiberIdsUpdatedThisCommit?.add(id);
+    }
+
     const isSuspense = nextFiber.tag === SuspenseComponent;
     let shouldResetChildren = false;
     // The behavior of timed-out Suspense trees is unique.
@@ -3447,12 +3511,6 @@ export function attach(
       stylex: null,
     };
 
-    if (enableStyleXFeatures) {
-      if (memoizedProps != null && memoizedProps.hasOwnProperty('xstyle')) {
-        plugins.stylex = getStyleXData(memoizedProps.xstyle);
-      }
-    }
-
     let source = null;
     if (canViewSource) {
       source = getSourceForFiber(fiber);
@@ -3812,23 +3870,114 @@ export function attach(
     // Clone before cleaning so that we preserve the full data.
     // This will enable us to send patches without re-inspecting if hydrated paths are requested.
     // (Reducing how often we shallow-render is a better DX for function components that use hooks.)
-    const cleanedInspectedElement = {...mostRecentlyInspectedElement};
-    // $FlowFixMe[prop-missing] found when upgrading Flow
+    const cleanedInspectedElement: InspectedElement = {
+      ...((mostRecentlyInspectedElement: any): InspectedElement),
+    };
+
+    // [FE-1885] Note that the internal.registerPlainObject API is only available for newer Replay Chromium builds.
+    const getObjectId = (object: Object) => {
+      if (
+        __RECORD_REPLAY_ARGUMENTS__ &&
+        __RECORD_REPLAY_ARGUMENTS__.internal &&
+        __RECORD_REPLAY_ARGUMENTS__.internal.registerPlainObject
+      ) {
+        try {
+          return __RECORD_REPLAY_ARGUMENTS__.internal.registerPlainObject(
+            object,
+          );
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      return null;
+    };
+
+    // [FE-1885] React DevTools uses a bespoke format for inspecting props/state/hooks data;
+    // Replay's React DevTools fork uses the Replay Inspector (and the Replay object preview format)
+    // For the time being, the backend needs to support both,
+    // but eventually we can remove a lot of this info from the inspected element payload.
+    const fiber = findCurrentFiberUsingSlowPathById(id);
+    if (fiber == null) {
+      throw Error('Unexpected null');
+    }
+    cleanedInspectedElement.contextObjectId = cleanedInspectedElement.context
+      ? getObjectId(cleanedInspectedElement.context)
+      : null;
+    cleanedInspectedElement.hooksObjectId = cleanedInspectedElement.hooks
+      ? getObjectId(cleanedInspectedElement.hooks)
+      : null;
+    cleanedInspectedElement.propsObjectId = cleanedInspectedElement.props
+      ? getObjectId(cleanedInspectedElement.props)
+      : null;
+    cleanedInspectedElement.stateObjectId = cleanedInspectedElement.state
+      ? getObjectId(cleanedInspectedElement.state)
+      : null;
+    cleanedInspectedElement.typeObjectId = cleanedInspectedElement.canViewSource
+      ? getObjectId(fiber.type)
+      : null;
+
+    // [FE-2011] Highlight which hooks changed between renders.
+    const getChangedHooksHelper = (): number[] => {
+      const prevFiber = fiber.alternate;
+      if (prevFiber !== null) {
+        const indices = getChangedHooksIndices(
+          prevFiber.memoizedState,
+          fiber.memoizedState,
+        );
+        // eslint-disable-next-line eqeqeq
+        return indices == null || indices.length == 0 ? [] : indices;
+      }
+      return [];
+    };
+
+    // [FE-2011] Highlight which values changed between renders.
+    const getChangedKeysHelper = (
+      type: 'context' | 'props' | 'state',
+    ): string[] => {
+      const prevFiber = fiber.alternate;
+      if (prevFiber != null) {
+        switch (type) {
+          case 'context': {
+            const result = getContextChangedKeys(fiber);
+            if (Array.isArray(result)) {
+              return result;
+            }
+            break;
+          }
+          case 'props': {
+            return (
+              getChangedKeys(prevFiber.memoizedProps, fiber.memoizedProps) ?? []
+            );
+          }
+          case 'state': {
+            return (
+              getChangedKeys(prevFiber.memoizedState, fiber.memoizedState) ?? []
+            );
+          }
+        }
+      }
+
+      return [];
+    };
+
+    cleanedInspectedElement.changedContextKeys =
+      getChangedKeysHelper('context');
+    cleanedInspectedElement.changedHooksIds = getChangedHooksHelper();
+    cleanedInspectedElement.changedPropsKeys = getChangedKeysHelper('props');
+    cleanedInspectedElement.changedStateKeys = getChangedKeysHelper('state');
+
     cleanedInspectedElement.context = cleanForBridge(
       cleanedInspectedElement.context,
       createIsPathAllowed('context', null),
     );
-    // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.hooks = cleanForBridge(
       cleanedInspectedElement.hooks,
       createIsPathAllowed('hooks', 'hooks'),
     );
-    // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.props = cleanForBridge(
       cleanedInspectedElement.props,
       createIsPathAllowed('props', null),
     );
-    // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.state = cleanForBridge(
       cleanedInspectedElement.state,
       createIsPathAllowed('state', null),
@@ -4169,7 +4318,10 @@ export function attach(
       },
     );
 
-    let timelineData = null;
+    const timelineData: null = null;
+
+    // REPLAY Not doing any profiling work for the foreseeable future, disable this
+    /*
     if (typeof getTimelineData === 'function') {
       const currentTimelineData = getTimelineData();
       if (currentTimelineData) {
@@ -4201,6 +4353,7 @@ export function attach(
         };
       }
     }
+    */
 
     return {
       dataForRoots,
@@ -4256,16 +4409,6 @@ export function attach(
     if (toggleProfilingStatus !== null) {
       toggleProfilingStatus(false);
     }
-  }
-
-  // Automatically start profiling so that we don't miss timing info from initial "mount".
-  if (
-    sessionStorageGetItem(SESSION_STORAGE_RELOAD_AND_PROFILE_KEY) === 'true'
-  ) {
-    startProfiling(
-      sessionStorageGetItem(SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY) ===
-        'true',
-    );
   }
 
   // React will switch between these implementations depending on whether
@@ -4656,13 +4799,18 @@ export function attach(
     deletePath,
     findNativeNodesForFiberID,
     flushInitialOperations,
+    flushPendingEvents,
     getBestMatchForTrackedPath,
+    getDisplayNameForFiber,
     getComponentStackForFiber,
     getSourceForFiber,
     getDisplayNameForFiberID,
+    getElementTypeForFiber,
     getFiberForNative,
     getFiberIDForNative,
+    getFiberIDUnsafe,
     getInstanceAndStyle,
+    getOrGenerateFiberID,
     getOwnersList,
     getPathForElement,
     getProfilingData,
@@ -4680,8 +4828,10 @@ export function attach(
     overrideValueAtPath,
     renamePath,
     renderer,
+    setRootPseudoKey,
     setTraceUpdatesEnabled,
     setTrackedPath,
+    shouldFilterFiber,
     startProfiling,
     stopProfiling,
     storeAsGlobal,
