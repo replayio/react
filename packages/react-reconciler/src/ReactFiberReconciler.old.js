@@ -838,6 +838,6 @@ export function injectIntoDevTools(devToolsConfig: DevToolsConfig): boolean {
     getCurrentFiber: __DEV__ ? getCurrentFiberForDevTools : null,
     // Enables DevTools to detect reconciler version rather than renderer version
     // which may not match for third party renderers.
-    reconcilerVersion: ReactVersion,
+    reconcilerVersion: '18.3.1-next-f1338f8080-20240426',
   });
 }
