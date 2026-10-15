@@ -55,3 +55,19 @@ export function getReplayFiberID(fiber: Fiber): number {
   return Math.min(id, getReplayPersistentID(alternateFiber));
 }
 
+// Virtual instances (e.g. Server Components) are created from component info
+// objects rather than fibers. Replay doesn't track those objects today, so
+// the renderer leaves virtual instances without a persistent ID out of the
+// tree, like any filtered element (their children attach to the nearest
+// included ancestor instead).
+export function hasReplayPersistentID(object: {...}): boolean {
+  return !!__RECORD_REPLAY_ARGUMENTS__.getPersistentId(object);
+}
+
+export function getReplayVirtualInstanceID(componentInfo: {...}): number {
+  const id = __RECORD_REPLAY_ARGUMENTS__.getPersistentId(componentInfo);
+  if (!id) {
+    throw new Error('Missing persistent ID for component info');
+  }
+  return id;
+}

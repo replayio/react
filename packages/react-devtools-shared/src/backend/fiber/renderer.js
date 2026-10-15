@@ -49,7 +49,6 @@ import {
 import {
   deletePathInObject,
   getInObject,
-  getUID,
   renamePathInObject,
   setInObject,
   utfEncodeString,
@@ -192,7 +191,11 @@ import {
 import {getDispatcherRef} from '../shared/DevToolsReactDispatcher';
 import {getSourceLocationByFiber} from './DevToolsFiberComponentStack';
 import {formatOwnerStack} from '../shared/DevToolsOwnerStack';
-import {getReplayFiberID} from './shared/ReplayFiberIDs';
+import {
+  getReplayFiberID,
+  getReplayVirtualInstanceID,
+  hasReplayPersistentID,
+} from './shared/ReplayFiberIDs';
 
 function createFiberInstance(fiber: Fiber): FiberInstance {
   return {
@@ -233,7 +236,8 @@ function createVirtualInstance(
 ): VirtualInstance {
   return {
     kind: VIRTUAL_INSTANCE,
-    id: getUID(),
+    // REPLAY See ReplayFiberIDs.js.
+    id: getReplayVirtualInstanceID(debugEntry),
     parent: null,
     firstChild: null,
     nextSibling: null,
@@ -1031,6 +1035,11 @@ export function attach(
     data: ReactComponentInfo,
     secondaryEnv: null | string,
   ): boolean {
+    // REPLAY See getReplayVirtualInstanceID().
+    if (!hasReplayPersistentID(data)) {
+      return true;
+    }
+
     if (!isInFocusedActivity) {
       return true;
     }
