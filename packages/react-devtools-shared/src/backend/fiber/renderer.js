@@ -1750,6 +1750,12 @@ export function attach(
     const id = fiberInstance.id;
     const fiber = fiberInstance.data;
 
+    // REPLAY Record the IDs of elements added to the tree in this commit, for
+    // the backend routine's component commit timeline, and so that it only
+    // sends back component types for new elements (see
+    // ReplayComponentTypes.js).
+    window.fiberIdsAddedThisCommit?.add(id);
+
     const isProfilingSupported = fiber.hasOwnProperty('treeBaseDuration');
 
     const isRoot = fiber.tag === HostRoot;
@@ -4400,6 +4406,15 @@ export function attach(
       // Update the Fiber so we that we always keep the current Fiber on the data.
       fiberInstance.data = nextFiber;
       if (prevFiber !== nextFiber) {
+        // REPLAY Record the IDs of elements that re-rendered in this commit,
+        // for the backend routine's component commit timeline.
+        if (
+          fiberInstance.kind === FIBER_INSTANCE &&
+          window.fiberIdsUpdatedThisCommit != null &&
+          didFiberRender(ReactTypeOfWork, prevFiber, nextFiber)
+        ) {
+          window.fiberIdsUpdatedThisCommit.add(fiberInstance.id);
+        }
         if (
           mostRecentlyInspectedElement !== null &&
           (mostRecentlyInspectedElement.id === fiberInstance.id ||
