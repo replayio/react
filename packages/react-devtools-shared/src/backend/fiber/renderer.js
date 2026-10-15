@@ -196,7 +196,10 @@ import {
   getReplayVirtualInstanceID,
   hasReplayPersistentID,
 } from './shared/ReplayFiberIDs';
-import {addReplayObjectIDs} from './shared/ReplayInspectedElement';
+import {
+  addReplayChangedData,
+  addReplayObjectIDs,
+} from './shared/ReplayInspectedElement';
 
 function createFiberInstance(fiber: Fiber): FiberInstance {
   return {
@@ -6845,10 +6848,11 @@ export function attach(
     // REPLAY See ReplayInspectedElement.js.
     const replayInstance = idToDevToolsInstanceMap.get(id);
     if (replayInstance != null && replayInstance.kind === FIBER_INSTANCE) {
-      addReplayObjectIDs(
+      const fiber = replayInstance.data;
+      addReplayObjectIDs(cleanedInspectedElement, inspectedElement, fiber);
+      addReplayChangedData(
         cleanedInspectedElement,
-        inspectedElement,
-        replayInstance.data,
+        getChangeDescription(fiber.alternate, fiber),
       );
     }
 

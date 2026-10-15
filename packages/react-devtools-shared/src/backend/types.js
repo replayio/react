@@ -336,6 +336,12 @@ export type InspectedElement = {
   // React Native only.
   nativeTag: number | null,
 
+  // REPLAY What changed in the last render, see ReplayInspectedElement.js.
+  changedContextKeys?: Array<string>,
+  changedHooksIds?: Array<number>,
+  changedPropsKeys?: Array<string>,
+  changedStateKeys?: Array<string>,
+
   // REPLAY Replay object IDs, see ReplayInspectedElement.js.
   contextObjectId?: number | null,
   hooksObjectId?: number | null,

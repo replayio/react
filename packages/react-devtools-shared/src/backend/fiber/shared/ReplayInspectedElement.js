@@ -16,7 +16,7 @@ import {
   ElementTypeFunction,
   ElementTypeMemo,
 } from 'react-devtools-shared/src/frontend/types';
-import type {InspectedElement} from '../../types';
+import type {ChangeDescription, InspectedElement} from '../../types';
 
 // Provided by Replay in the scope of evaluations in paused recordings.
 declare var __RECORD_REPLAY_ARGUMENTS__: {
@@ -61,4 +61,19 @@ export function addReplayObjectIDs(
     elementType === ElementTypeMemo
       ? getReplayObjectID(fiber.type)
       : null;
+}
+
+// The devtools frontend highlights which props, state, context values and
+// hooks of the inspected element changed in its last render. React DevTools
+// computes this (the "change description") only while profiling with "record
+// why each component rendered"; the renderer passes the same computation here.
+export function addReplayChangedData(
+  payload: InspectedElement,
+  changeDescription: ChangeDescription | null,
+): void {
+  const context = changeDescription?.context;
+  payload.changedContextKeys = Array.isArray(context) ? context : [];
+  payload.changedHooksIds = changeDescription?.hooks ?? [];
+  payload.changedPropsKeys = changeDescription?.props ?? [];
+  payload.changedStateKeys = changeDescription?.state ?? [];
 }
