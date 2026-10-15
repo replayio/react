@@ -13,11 +13,6 @@ import {
   UNKNOWN_SUSPENDERS_NONE,
   __DEBUG__,
 } from '../constants';
-import setupHighlighter from './views/Highlighter';
-import {
-  initialize as setupTraceUpdates,
-  toggleEnabled as setTraceUpdatesEnabled,
-} from './views/TraceUpdates';
 import {currentBridgeProtocol} from 'react-devtools-shared/src/bridge';
 
 import type {BackendBridge} from 'react-devtools-shared/src/bridge';
@@ -356,8 +351,10 @@ export default class Agent extends EventEmitter<{
     bridge.addListener('overrideProps', this.overrideProps);
     bridge.addListener('overrideState', this.overrideState);
 
-    setupHighlighter(bridge, this);
-    setupTraceUpdates(this);
+    // REPLAY No Highlighter and TraceUpdates views: they draw overlays into
+    // the page's DOM, which must not be done in a paused recording (the
+    // devtools frontend highlights elements through the Replay protocol), and
+    // leaving them out keeps them out of the bundle.
 
     // By this time, Store should already be initialized and intercept events
     bridge.send('backendInitialized');
@@ -967,9 +964,9 @@ export default class Agent extends EventEmitter<{
 
   setTraceUpdatesEnabled: (traceUpdatesEnabled: boolean) => void =
     traceUpdatesEnabled => {
+      // REPLAY Nothing would draw the trace updates, see the constructor.
+      traceUpdatesEnabled = false;
       this._traceUpdatesEnabled = traceUpdatesEnabled;
-
-      setTraceUpdatesEnabled(traceUpdatesEnabled);
 
       for (const rendererID in this._rendererInterfaces) {
         const renderer = this._rendererInterfaces[

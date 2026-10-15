@@ -49,7 +49,6 @@ import {
 import {
   deletePathInObject,
   getInObject,
-  getUID,
   renamePathInObject,
   setInObject,
   utfEncodeString,
@@ -110,7 +109,6 @@ import {
   LAZY_SYMBOL_STRING,
   REACT_OPTIMISTIC_KEY,
 } from '../shared/ReactSymbols';
-import {enableStyleXFeatures} from 'react-devtools-feature-flags';
 
 import {componentInfoToComponentLogsMap} from '../shared/DevToolsServerComponentLogs';
 
@@ -148,7 +146,6 @@ import {
   supportsConsoleTasks,
 } from './DevToolsFiberComponentStack';
 
-import {getStyleXData} from '../StyleX/utils';
 
 import type {Fiber, FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
 import type {
@@ -192,11 +189,22 @@ import {
 import {getDispatcherRef} from '../shared/DevToolsReactDispatcher';
 import {getSourceLocationByFiber} from './DevToolsFiberComponentStack';
 import {formatOwnerStack} from '../shared/DevToolsOwnerStack';
+import {
+  getReplayFiberID,
+  getReplayVirtualInstanceID,
+  hasReplayPersistentID,
+} from './shared/ReplayFiberIDs';
+import {
+  addReplayChangedData,
+  addReplayObjectIDs,
+} from './shared/ReplayInspectedElement';
+import {shouldMeasureHostInstances} from './shared/ReplayMeasurement';
 
 function createFiberInstance(fiber: Fiber): FiberInstance {
   return {
     kind: FIBER_INSTANCE,
-    id: getUID(),
+    // REPLAY See ReplayFiberIDs.js.
+    id: getReplayFiberID(fiber),
     parent: null,
     firstChild: null,
     nextSibling: null,
@@ -231,7 +239,8 @@ function createVirtualInstance(
 ): VirtualInstance {
   return {
     kind: VIRTUAL_INSTANCE,
-    id: getUID(),
+    // REPLAY See ReplayFiberIDs.js.
+    id: getReplayVirtualInstanceID(debugEntry),
     parent: null,
     firstChild: null,
     nextSibling: null,
@@ -1029,6 +1038,11 @@ export function attach(
     data: ReactComponentInfo,
     secondaryEnv: null | string,
   ): boolean {
+    // REPLAY See getReplayVirtualInstanceID().
+    if (!hasReplayPersistentID(data)) {
+      return true;
+    }
+
     if (!isInFocusedActivity) {
       return true;
     }
@@ -1579,6 +1593,10 @@ export function attach(
   }
 
   function measureHostInstance(instance: HostInstance): null | Array<Rect> {
+    // REPLAY See ReplayMeasurement.js.
+    if (!shouldMeasureHostInstances()) {
+      return null;
+    }
     // Feature detect measurement capabilities of this environment.
     // TODO: Consider making this capability injected by the ReactRenderer.
     if (typeof instance !== 'object' || instance === null) {
@@ -1738,6 +1756,12 @@ export function attach(
     }
     const id = fiberInstance.id;
     const fiber = fiberInstance.data;
+
+    // REPLAY Record the IDs of elements added to the tree in this commit, for
+    // the backend routine's component commit timeline, and so that it only
+    // sends back component types for new elements (see
+    // ReplayComponentTypes.js).
+    window.fiberIdsAddedThisCommit?.add(id);
 
     const isProfilingSupported = fiber.hasOwnProperty('treeBaseDuration');
 
@@ -4389,6 +4413,15 @@ export function attach(
       // Update the Fiber so we that we always keep the current Fiber on the data.
       fiberInstance.data = nextFiber;
       if (prevFiber !== nextFiber) {
+        // REPLAY Record the IDs of elements that re-rendered in this commit,
+        // for the backend routine's component commit timeline.
+        if (
+          fiberInstance.kind === FIBER_INSTANCE &&
+          window.fiberIdsUpdatedThisCommit != null &&
+          didFiberRender(ReactTypeOfWork, prevFiber, nextFiber)
+        ) {
+          window.fiberIdsUpdatedThisCommit.add(fiberInstance.id);
+        }
         if (
           mostRecentlyInspectedElement !== null &&
           (mostRecentlyInspectedElement.id === fiberInstance.id ||
@@ -6236,11 +6269,7 @@ export function attach(
       stylex: null,
     };
 
-    if (enableStyleXFeatures) {
-      if (memoizedProps != null && memoizedProps.hasOwnProperty('xstyle')) {
-        plugins.stylex = getStyleXData(memoizedProps.xstyle);
-      }
-    }
+    // REPLAY No StyleX data (and no StyleX code in the bundle).
 
     let source = null;
     if (canViewSource) {
@@ -6814,6 +6843,18 @@ export function attach(
     // This will enable us to send patches without re-inspecting if hydrated paths are requested.
     // (Reducing how often we shallow-render is a better DX for function components that use hooks.)
     const cleanedInspectedElement = {...inspectedElement};
+
+    // REPLAY See ReplayInspectedElement.js.
+    const replayInstance = idToDevToolsInstanceMap.get(id);
+    if (replayInstance != null && replayInstance.kind === FIBER_INSTANCE) {
+      const fiber = replayInstance.data;
+      addReplayObjectIDs(cleanedInspectedElement, inspectedElement, fiber);
+      addReplayChangedData(
+        cleanedInspectedElement,
+        getChangeDescription(fiber.alternate, fiber),
+      );
+    }
+
     // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.context = cleanForBridge(
       inspectedElement.context,

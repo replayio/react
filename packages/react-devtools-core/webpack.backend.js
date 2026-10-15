@@ -27,9 +27,11 @@ const DEVTOOLS_VERSION = getVersionString();
 const featureFlagTarget = process.env.FEATURE_FLAG_TARGET || 'core/backend-oss';
 
 // This targets RN/Hermes.
-process.env.BABEL_CONFIG_ADDITIONAL_TARGETS = JSON.stringify({
-  ie: '11',
-});
+// REPLAY Replay evaluates this bundle in Chromium only, so don't transpile it
+// for Hermes: that would make it considerably bigger.
+// process.env.BABEL_CONFIG_ADDITIONAL_TARGETS = JSON.stringify({
+//   ie: '11',
+// });
 
 module.exports = {
   mode: __DEV__ ? 'development' : 'production',
@@ -79,7 +81,9 @@ module.exports = {
     }),
   ],
   optimization: {
-    minimize: false,
+    // REPLAY Replay evaluates this bundle inside paused recordings, where every
+    // byte has to be parsed again. Minifying it shrinks it to a fraction.
+    minimize: !__DEV__,
   },
   module: {
     rules: [

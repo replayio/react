@@ -16,9 +16,7 @@ import type {
 } from 'react-devtools-shared/src/backend/types';
 import type {ComponentFilter} from 'react-devtools-shared/src/frontend/types';
 
-import {attach as attachFlight} from 'react-devtools-shared/src/backend/flight/renderer';
 import {attach as attachFiber} from 'react-devtools-shared/src/backend/fiber/renderer';
-import {attach as attachLegacy} from 'react-devtools-shared/src/backend/legacy/renderer';
 import {hasAssignedBackend} from 'react-devtools-shared/src/backend/utils';
 
 // this is the backend that is compatible with all older React versions
@@ -47,7 +45,9 @@ export default function attachRenderer(
   if (rendererInterface == null) {
     if (typeof renderer.getCurrentComponentInfo === 'function') {
       // react-flight/client
-      rendererInterface = attachFlight(hook, id, renderer, global);
+      // REPLAY Replay's evaluators only inject Fiber renderers (Server
+      // Components aren't shown, see shouldFilterVirtual()), so keep the
+      // Flight renderer out of the bundle.
     } else if (
       // v16-19
       typeof renderer.findFiberByHostInstance === 'function' ||
@@ -66,7 +66,9 @@ export default function attachRenderer(
       );
     } else if (renderer.ComponentTree) {
       // react-dom v15
-      rendererInterface = attachLegacy(hook, id, renderer, global);
+      // REPLAY Replay doesn't support React 15 or older (Replay's evaluators
+      // don't inject such renderers), so keep the legacy renderer out of the
+      // bundle. It would also patch React 15's internals in the page.
     } else {
       // Older react-dom or other unsupported renderer version
     }

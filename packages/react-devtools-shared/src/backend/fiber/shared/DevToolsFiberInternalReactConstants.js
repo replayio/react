@@ -8,6 +8,10 @@
  */
 
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
+import {
+  recordReplayComponentType,
+  recordReplayNonComponentType,
+} from './ReplayComponentTypes';
 import type {WorkTagMap} from 'react-devtools-shared/src/backend/types';
 
 import {
@@ -398,8 +402,10 @@ export function getInternalReactConstants(version: string): {
       case IncompleteFunctionComponent:
       case FunctionComponent:
       case IndeterminateComponent:
+        recordReplayComponentType(fiber, resolvedType); // REPLAY
         return getDisplayName(resolvedType);
       case ForwardRef:
+        recordReplayComponentType(fiber, resolvedType); // REPLAY
         return getWrappedDisplayName(
           elementType,
           resolvedType,
@@ -433,6 +439,7 @@ export function getInternalReactConstants(version: string): {
       case MemoComponent:
       // $FlowFixMe[invalid-compare] -- falls through
       case SimpleMemoComponent:
+        recordReplayComponentType(fiber, resolvedType); // REPLAY
         // Display name in React does not use `Memo` as a wrapper but fallback name.
         return getWrappedDisplayName(
           elementType,
@@ -468,6 +475,8 @@ export function getInternalReactConstants(version: string): {
         return 'Error';
       default:
         const typeSymbol = getTypeSymbol(type);
+
+        recordReplayNonComponentType(fiber, type); // REPLAY
 
         switch (typeSymbol) {
           case CONCURRENT_MODE_NUMBER:
