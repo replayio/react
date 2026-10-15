@@ -80,6 +80,7 @@ import type {
   SerializedElement as SerializedElementBackend,
 } from 'react-devtools-shared/src/backend/types';
 import {isSynchronousXHRSupported} from './backend/utils';
+import {recordReplayComponentDisplayName} from './backend/fiber/shared/ReplayComponentTypes';
 
 // $FlowFixMe[method-unbinding]
 const hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -164,6 +165,8 @@ export function getDisplayName(
   }
 
   cachedDisplayNames.set(type, displayName);
+  // REPLAY See ReplayComponentTypes.js.
+  recordReplayComponentDisplayName(type, displayName);
   return displayName;
 }
 
