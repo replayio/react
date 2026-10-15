@@ -12,7 +12,10 @@ import Bridge from 'react-devtools-shared/src/bridge';
 import {installHook} from 'react-devtools-shared/src/hook';
 import {initBackend} from 'react-devtools-shared/src/backend';
 import {__DEBUG__} from 'react-devtools-shared/src/constants';
-import setupNativeStyleEditor from 'react-devtools-shared/src/backend/NativeStyleEditor/setupNativeStyleEditor';
+// REPLAY The style editor is only for React Native, which Replay doesn't
+// record; keep it out of the bundle.
+// import setupNativeStyleEditor from 'react-devtools-shared/src/backend/NativeStyleEditor/setupNativeStyleEditor';
+function setupNativeStyleEditor(...args: Array<mixed>): void {}
 import {
   getDefaultComponentFilters,
   getIsReloadAndProfileSupported,
