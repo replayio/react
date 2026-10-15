@@ -192,11 +192,13 @@ import {
 import {getDispatcherRef} from '../shared/DevToolsReactDispatcher';
 import {getSourceLocationByFiber} from './DevToolsFiberComponentStack';
 import {formatOwnerStack} from '../shared/DevToolsOwnerStack';
+import {getReplayFiberID} from './shared/ReplayFiberIDs';
 
 function createFiberInstance(fiber: Fiber): FiberInstance {
   return {
     kind: FIBER_INSTANCE,
-    id: getUID(),
+    // REPLAY See ReplayFiberIDs.js.
+    id: getReplayFiberID(fiber),
     parent: null,
     firstChild: null,
     nextSibling: null,
