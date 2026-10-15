@@ -200,6 +200,7 @@ import {
   addReplayChangedData,
   addReplayObjectIDs,
 } from './shared/ReplayInspectedElement';
+import {shouldMeasureHostInstances} from './shared/ReplayMeasurement';
 
 function createFiberInstance(fiber: Fiber): FiberInstance {
   return {
@@ -1594,6 +1595,10 @@ export function attach(
   }
 
   function measureHostInstance(instance: HostInstance): null | Array<Rect> {
+    // REPLAY See ReplayMeasurement.js.
+    if (!shouldMeasureHostInstances()) {
+      return null;
+    }
     // Feature detect measurement capabilities of this environment.
     // TODO: Consider making this capability injected by the ReactRenderer.
     if (typeof instance !== 'object' || instance === null) {
