@@ -196,6 +196,7 @@ import {
   getReplayVirtualInstanceID,
   hasReplayPersistentID,
 } from './shared/ReplayFiberIDs';
+import {addReplayObjectIDs} from './shared/ReplayInspectedElement';
 
 function createFiberInstance(fiber: Fiber): FiberInstance {
   return {
@@ -6840,6 +6841,17 @@ export function attach(
     // This will enable us to send patches without re-inspecting if hydrated paths are requested.
     // (Reducing how often we shallow-render is a better DX for function components that use hooks.)
     const cleanedInspectedElement = {...inspectedElement};
+
+    // REPLAY See ReplayInspectedElement.js.
+    const replayInstance = idToDevToolsInstanceMap.get(id);
+    if (replayInstance != null && replayInstance.kind === FIBER_INSTANCE) {
+      addReplayObjectIDs(
+        cleanedInspectedElement,
+        inspectedElement,
+        replayInstance.data,
+      );
+    }
+
     // $FlowFixMe[prop-missing] found when upgrading Flow
     cleanedInspectedElement.context = cleanForBridge(
       inspectedElement.context,

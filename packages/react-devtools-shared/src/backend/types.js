@@ -335,6 +335,13 @@ export type InspectedElement = {
 
   // React Native only.
   nativeTag: number | null,
+
+  // REPLAY Replay object IDs, see ReplayInspectedElement.js.
+  contextObjectId?: number | null,
+  hooksObjectId?: number | null,
+  propsObjectId?: number | null,
+  stateObjectId?: number | null,
+  typeObjectId?: number | null,
 };
 
 export const InspectElementErrorType = 'error';
