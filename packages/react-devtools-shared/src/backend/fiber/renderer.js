@@ -109,7 +109,6 @@ import {
   LAZY_SYMBOL_STRING,
   REACT_OPTIMISTIC_KEY,
 } from '../shared/ReactSymbols';
-import {enableStyleXFeatures} from 'react-devtools-feature-flags';
 
 import {componentInfoToComponentLogsMap} from '../shared/DevToolsServerComponentLogs';
 
@@ -147,7 +146,6 @@ import {
   supportsConsoleTasks,
 } from './DevToolsFiberComponentStack';
 
-import {getStyleXData} from '../StyleX/utils';
 
 import type {Fiber, FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
 import type {
@@ -6271,11 +6269,7 @@ export function attach(
       stylex: null,
     };
 
-    if (enableStyleXFeatures) {
-      if (memoizedProps != null && memoizedProps.hasOwnProperty('xstyle')) {
-        plugins.stylex = getStyleXData(memoizedProps.xstyle);
-      }
-    }
+    // REPLAY No StyleX data (and no StyleX code in the bundle).
 
     let source = null;
     if (canViewSource) {
