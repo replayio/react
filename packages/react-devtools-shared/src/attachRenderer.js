@@ -16,7 +16,6 @@ import type {
 } from 'react-devtools-shared/src/backend/types';
 import type {ComponentFilter} from 'react-devtools-shared/src/frontend/types';
 
-import {attach as attachFlight} from 'react-devtools-shared/src/backend/flight/renderer';
 import {attach as attachFiber} from 'react-devtools-shared/src/backend/fiber/renderer';
 import {hasAssignedBackend} from 'react-devtools-shared/src/backend/utils';
 
@@ -46,7 +45,9 @@ export default function attachRenderer(
   if (rendererInterface == null) {
     if (typeof renderer.getCurrentComponentInfo === 'function') {
       // react-flight/client
-      rendererInterface = attachFlight(hook, id, renderer, global);
+      // REPLAY Replay's evaluators only inject Fiber renderers (Server
+      // Components aren't shown, see shouldFilterVirtual()), so keep the
+      // Flight renderer out of the bundle.
     } else if (
       // v16-19
       typeof renderer.findFiberByHostInstance === 'function' ||
